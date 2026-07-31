@@ -9,8 +9,6 @@
  *   Addresses / Quit).
  * - The HTTP server is started/stopped from both the tray menu and the window
  *   UI; state is reflected in both places.
- * - QR code is drawn directly onto a device-context bitmap (no external image
- *   library, no file I/O).
  * - Autostart toggles HKCU\Software\Microsoft\Windows\CurrentVersion\Run.
  * - Single-instance enforcement via a named mutex.
  */
@@ -24,7 +22,6 @@
 #include "logging.h"
 #include "netinfo.h"
 #include "procs.h"
-#include "qrcode.h"
 #include "resource.h"
 
 #include <stdio.h>
@@ -62,7 +59,6 @@ enum {
     IDC_STOP,
     IDC_STATUS,
     IDC_ADDRESSES,
-    IDC_QR,
     IDC_GENERATE_PW,
     IDC_HIDDEN
 };
@@ -78,8 +74,6 @@ static HINSTANCE        g_hinst;
 static HWND             g_hwnd = NULL;
 static NOTIFYICONDATAW  g_nid = { sizeof(NOTIFYICONDATAW) };
 static BOOL             g_server_running = FALSE;
-static HBITMAP          g_qr_bitmap = NULL;
-static int              g_qr_size = 0;
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                            */
@@ -105,119 +99,7 @@ static int get_int(HWND dlg, int id)
     return GetDlgItemInt(dlg, id, NULL, FALSE);
 }
 
-/* Build the base URL that phones should open. */
-static void build_url(WCHAR *out, size_t cap, int port)
-{
-    _snwprintf_s(out, cap, _TRUNCATE, L"http://*:%d", port);
-}
 
-/* ------------------------------------------------------------------ */
-/* QR rendering                                                      */
-/* ------------------------------------------------------------------ */
-
-static void draw_qr(HWND ctl, const WCHAR *url)
-{
-    char url_utf8[512];
-    ltm_qr qr;
-    int i, j, s;
-    HDC hdc, memdc;
-    BITMAPINFO bmi = { 0 };
-    RECT rc;
-    int scale, margin;
-
-    if (g_qr_bitmap != NULL) {
-        DeleteObject(g_qr_bitmap);
-        g_qr_bitmap = NULL;
-        g_qr_size = 0;
-    }
-
-    /* Encode URL into QR structure. */
-    WideCharToMultiByte(CP_UTF8, 0, url, -1,
-                        url_utf8, (int)sizeof(url_utf8), NULL, NULL);
-
-    if (!ltm_qr_encode(url_utf8, &qr)) {
-        InvalidateRect(ctl, NULL, TRUE);
-        return;
-    }
-
-    s = qr.size;                     /* module count (odd, e.g. 21) */
-    g_qr_size = s + 8;               /* add quiet zone */
-    scale = 6;                       /* pixels per module */
-    margin = scale * 4;              /* quiet zone in pixels */
-    g_qr_size = g_qr_size * scale;
-
-    ZeroMemory(&bmi, sizeof(bmi));
-    bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth       = g_qr_size;
-    bmi.bmiHeader.biHeight      = g_qr_size; /* bottom-up */
-    bmi.bmiHeader.biPlanes      = 1;
-    bmi.bmiHeader.biBitCount    = 32;
-    bmi.bmiHeader.biCompression = BI_RGB;
-
-    hdc = GetDC(ctl);
-    memdc = CreateCompatibleDC(hdc);
-    g_qr_bitmap = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, NULL, NULL, 0);
-    if (!g_qr_bitmap) {
-        DeleteDC(memdc);
-        ReleaseDC(ctl, hdc);
-        return;
-    }
-    SelectObject(memdc, g_qr_bitmap);
-
-    /* White background. */
-    PatBlt(memdc, 0, 0, g_qr_size, g_qr_size, WHITENESS);
-
-    /* Draw modules. Black = 0x00000000 in BGRA. */
-    for (i = 0; i < s; i++) {
-        for (j = 0; j < s; j++) {
-            if (qr.m[i][j]) {
-                SetPixelV(memdc,
-                          margin + j * scale,
-                          margin + i * scale,
-                          RGB(0, 0, 0));
-                if (scale > 2) {
-                    /* Fill the scaled block. */
-                    RECT r;
-                    r.left   = margin + j * scale;
-                    r.top    = margin + i * scale;
-                    r.right  = r.left + scale;
-                    r.bottom = r.top + scale;
-                    FillRect(memdc, &r, (HBRUSH)GetStockObject(BLACK_BRUSH));
-                }
-            }
-        }
-    }
-    DeleteDC(memdc);
-    ReleaseDC(ctl, hdc);
-
-    GetClientRect(ctl, &rc);
-    InvalidateRect(ctl, &rc, TRUE);
-}
-
-/* Custom-draw handler for the QR static control. */
-static void on_qr_paint(HWND ctl)
-{
-    PAINTSTRUCT ps;
-    HDC memdc;
-    POINT pt;
-
-    if (g_qr_bitmap == NULL) { return; }
-
-    BeginPaint(ctl, &ps);
-    memdc = CreateCompatibleDC(ps.hdc);
-    SelectObject(memdc, g_qr_bitmap);
-
-    /* Center the bitmap in the control. */
-    pt.x = (ps.rcPaint.right  - g_qr_size) / 2;
-    pt.y = (ps.rcPaint.bottom - g_qr_size) / 2;
-    if (pt.x < 0) { pt.x = 0; }
-    if (pt.y < 0) { pt.y = 0; }
-
-    BitBlt(ps.hdc, pt.x, pt.y, g_qr_size, g_qr_size,
-           memdc, 0, 0, SRCCOPY);
-    DeleteDC(memdc);
-    EndPaint(ctl, &ps);
-}
 
 /* ------------------------------------------------------------------ */
 /* Server lifecycle                                                   */
@@ -241,20 +123,6 @@ static void server_start(HWND dlg)
         enable_ctrl(dlg, IDC_STOP,  TRUE);
         enable_ctrl(dlg, IDC_PORT,  FALSE);
 
-        /* Draw QR for the first LAN address. */
-        {
-            ltm_netaddr addrs[16];
-            int n = ltm_net_list_addresses(addrs, 16);
-            if (n > 0) {
-                WCHAR url[128];
-                WCHAR full[128];
-                build_url(url, _countof(url), port);
-                /* Replace '*' with the actual IP. */
-                wcsncpy_s(url, _countof(url), addrs[0].ip + 2, _TRUNCATE); /* skip http: */
-                _snwprintf_s(full, _countof(full), _TRUNCATE, L"http://%s", url);
-                draw_qr(GetDlgItem(dlg, IDC_QR), full);
-            }
-        }
 
         SetTimer(dlg, LTM_TIMER_REFRESH, LTM_REFRESH_MS, NULL);
         ltm_log(L"service started on port %d", port);
@@ -279,11 +147,6 @@ static void server_stop(HWND dlg)
     enable_ctrl(dlg, IDC_STOP,  FALSE);
     enable_ctrl(dlg, IDC_PORT,  TRUE);
 
-    if (g_qr_bitmap != NULL) {
-        DeleteObject(g_qr_bitmap);
-        g_qr_bitmap = NULL;
-    }
-    InvalidateRect(GetDlgItem(dlg, IDC_QR), NULL, TRUE);
 
     ltm_log(L"service stopped");
 }
@@ -631,12 +494,6 @@ static INT_PTR CALLBACK dlg_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
         }
         return 0;
 
-    case WM_PAINT:
-        if ((HWND)lp == GetDlgItem(dlg, IDC_QR)) {
-            on_qr_paint((HWND)lp);
-            return 0;
-        }
-        break;
 
     case LTM_WM_TRAY:
         switch (LOWORD(lp)) {
@@ -680,7 +537,6 @@ static INT_PTR CALLBACK dlg_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
  *   Row 3:  [☐ Autostart] [☐ Start hidden]
  *   Row 4:  --- Status line ---
  *   Row 5:  [Addresses listbox]
- *   Row 6:  [QR code area]
  */
 
 static HWND create_main_dialog(HINSTANCE hinst)
@@ -746,16 +602,6 @@ static HWND create_main_dialog(HINSTANCE hinst)
     }
     y += eh + 2 + 85 + GAP;
 
-    /* -- Row 6: QR --------------------------------------------------- */
-    make_label(dlg, -1, ltm_str(STR_LBL_QR), MARGIN, y, lw, eh);
-    {
-        HWND qr = CreateWindowExW(
-            0, L"STATIC", L"",
-            WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY,
-            MARGIN, y + eh + 2, DLG_W - MARGIN * 2, 170,
-            dlg, (HMENU)(INT_PTR)IDC_QR, hinst, NULL);
-        (void)qr;
-    }
 
     /* Set font to match the dialog. */
     {

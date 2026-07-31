@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex,nofollow">
+<title>LanTaskmgr</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body class="page-login">
+<main class="wrap">
+  <header class="hero">
+    <div class="mark" aria-hidden="true"></div>
+    <h1 data-i18n="title">LanTaskmgr</h1>
+    <p class="sub" data-i18n="loginSub">Sign in to manage this PC</p>
+  </header>
+
+  <form id="loginForm" class="card" autocomplete="off" novalidate>
+    <label for="pw" data-i18n="enterPw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" maxlength="64"
+           enterkeyhint="go" spellcheck="false">
+    <button type="submit" id="loginBtn" data-i18n="login">Log in</button>
+    <p id="loginMsg" class="msg" role="alert" aria-live="polite"></p>
+  </form>
+
+  <p class="foot" data-i18n="foot">LanTaskmgr</p>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

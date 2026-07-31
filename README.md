@@ -14,7 +14,7 @@ by Gordon Walkedby, reimplemented in C against the raw Win32 API.
 ## Why C
 
 The original is VB.NET/WinForms and drags in the whole .NET Framework plus
-Mono's `HttpListener`, `Newtonsoft.Json` and a QR library — roughly 2.5 MB of
+Mono's `HttpListener` and `Newtonsoft.Json` — roughly 2.5 MB of
 binaries and a 30-60 MB working set for a program whose entire job is to sit
 idle until the day you need it.
 
@@ -29,7 +29,6 @@ against its own purpose. So it is written the other way round:
 | files to ship | 10 (`.exe` + 5 DLLs + web folder + languages) | 1 (`LanTaskmgr.exe`) |
 | JSON | Newtonsoft.Json | hand-written serialiser |
 | HTTP | Mono.Net.HttpListener | Winsock + `select()` |
-| QR code | Gma.QrCodeNet | built-in encoder |
 | threads | thread per request | 1 UI + 1 network |
 
 Everything the browser loads (HTML, CSS, JS) is embedded in the executable as
@@ -53,12 +52,12 @@ runs on a bare Windows install.
 
 ## Usage
 
-Run the executable. The window shows the LAN addresses this PC is reachable on,
-a QR code for the first one, and the settings.
+Run the executable. The window shows the LAN addresses this PC is reachable on
+and the settings.
 
 1. Note the password (a random 6-digit one is generated on first run) or set
    your own.
-2. Scan the QR code with your phone, on the same network.
+2. On your phone (same Wi-Fi/LAN), open one of those LAN addresses in a browser.
 3. Log in, tap a process, confirm.
 
 Tick **Start with Windows** so it is already listening the next time something

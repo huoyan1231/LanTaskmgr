@@ -20,7 +20,7 @@ static const WCHAR *const kEN[STR_COUNT] = {
     /* STR_START_HIDDEN   */ L"Start minimised to tray",
     /* STR_CONNECT        */ L"Connect",
     /* STR_OPEN_THIS      */ L"Open this page in your phone's browser:",
-    /* STR_ADD_FAVOR      */ L"Scan the code, or type the address by hand.\r\n"
+    /* STR_ADD_FAVOR      */ L"Type the address above into your phone's browser.\r\n"
                              L"Bookmark it and enable \"Start with Windows\" so it is\r\n"
                              L"ready the moment your PC stops responding.",
     /* STR_ADDRESS        */ L"Address:",
@@ -52,7 +52,6 @@ static const WCHAR *const kEN[STR_COUNT] = {
     /* STR_LBL_LANG      */ L"Language",
     /* STR_LBL_STATUS    */ L"Status",
     /* STR_LBL_ADDRESSES */ L"LAN addresses (tap one to copy)",
-    /* STR_LBL_QR        */ L"QR code (scan with your phone)",
     /* STR_BTN_START     */ L"Start",
     /* STR_BTN_STOP      */ L"Stop",
     /* STR_BTN_GENPW     */ L"Random",
@@ -84,7 +83,7 @@ static const WCHAR *const kCN[STR_COUNT] = {
     /* STR_START_HIDDEN   */ L"启动时最小化到托盘",
     /* STR_CONNECT        */ L"连接",
     /* STR_OPEN_THIS      */ L"在你的手机浏览器里打开这个页面：",
-    /* STR_ADD_FAVOR      */ L"扫描二维码，或者手动输入上面的地址。\r\n"
+    /* STR_ADD_FAVOR      */ L"手动输入上面的地址到手机浏览器。\r\n"
                              L"建议把页面加入手机浏览器收藏夹，并勾选「开机自动启动」，\r\n"
                              L"这样电脑卡死的时候它已经在等着你了。",
     /* STR_ADDRESS        */ L"地址：",
@@ -116,7 +115,6 @@ static const WCHAR *const kCN[STR_COUNT] = {
     /* STR_LBL_LANG      */ L"语言",
     /* STR_LBL_STATUS    */ L"状态",
     /* STR_LBL_ADDRESSES */ L"局域网地址（点击复制）",
-    /* STR_LBL_QR        */ L"二维码（用手机扫描）",
     /* STR_BTN_START     */ L"启动服务",
     /* STR_BTN_STOP      */ L"停止服务",
     /* STR_BTN_GENPW     */ L"随机生成",
@@ -148,7 +146,7 @@ static const WCHAR *const kTW[STR_COUNT] = {
     /* STR_START_HIDDEN   */ L"啟動時最小化至通知區",
     /* STR_CONNECT        */ L"連線",
     /* STR_OPEN_THIS      */ L"在你的手機瀏覽器裡開啟這個頁面：",
-    /* STR_ADD_FAVOR      */ L"掃描 QR Code，或者手動輸入上面的位址。\r\n"
+    /* STR_ADD_FAVOR      */ L"手動輸入上面的位址到手機瀏覽器。\r\n"
                              L"建議把頁面加入手機瀏覽器的書籤，並勾選「開機時自動啟動」，\r\n"
                              L"這樣電腦當掉的時候它已經在等你了。",
     /* STR_ADDRESS        */ L"位址：",
@@ -180,7 +178,6 @@ static const WCHAR *const kTW[STR_COUNT] = {
     /* STR_LBL_LANG      */ L"語言",
     /* STR_LBL_STATUS    */ L"狀態",
     /* STR_LBL_ADDRESSES */ L"區域網路位址（點擊複製）",
-    /* STR_LBL_QR        */ L"QR Code（用手機掃描）",
     /* STR_BTN_START     */ L"啟動服務",
     /* STR_BTN_STOP      */ L"停止服務",
     /* STR_BTN_GENPW     */ L"隨機產生",

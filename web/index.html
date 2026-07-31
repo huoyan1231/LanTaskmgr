@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex,nofollow">
+<title>LanTaskmgr</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body class="page-manager">
+
+<header class="topbar">
+  <div class="topbar-row">
+    <h1 data-i18n="title">LanTaskmgr</h1>
+    <button id="logoutBtn" class="ghost" type="button" data-i18n="logout">Log out</button>
+  </div>
+  <div class="meter" title="RAM">
+    <div class="meter-bar"><span id="memBar"></span></div>
+    <span class="meter-label" id="memLabel">&mdash;</span>
+  </div>
+  <div class="toolbar">
+    <input id="filter" type="search" inputmode="search" spellcheck="false"
+           data-i18n-ph="filter" placeholder="Filter">
+    <div class="chips" role="group">
+      <button type="button" class="chip is-on" data-sort="cpu"  data-i18n="sortCpu">CPU</button>
+      <button type="button" class="chip"       data-sort="mem"  data-i18n="sortMem">RAM</button>
+      <button type="button" class="chip"       data-sort="name" data-i18n="sortName">Name</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <p class="hint" data-i18n="tapToKill">Tap a process to end it.</p>
+  <div id="tasklist" class="list"></div>
+  <p id="empty" class="empty" hidden data-i18n="noMatch">Nothing matches.</p>
+</main>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheetName">
+    <h2 id="sheetName">&nbsp;</h2>
+    <p id="sheetTitle" class="sheet-sub"></p>
+    <dl class="sheet-stats">
+      <div><dt data-i18n="colMem">RAM</dt><dd id="sheetMem">&mdash;</dd></div>
+      <div><dt data-i18n="colCpu">CPU</dt><dd id="sheetCpu">&mdash;</dd></div>
+      <div><dt data-i18n="colCount">Count</dt><dd id="sheetCount">&mdash;</dd></div>
+    </dl>
+    <p id="sheetWarn" class="warn" hidden></p>
+    <div class="sheet-actions">
+      <button type="button" id="sheetCancel" class="ghost" data-i18n="cancel">Cancel</button>
+      <button type="button" id="sheetKill" class="danger" data-i18n="endTask">End task</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

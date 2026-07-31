@@ -56,7 +56,6 @@ typedef enum ltm_str_id {
     STR_LBL_LANG,
     STR_LBL_STATUS,
     STR_LBL_ADDRESSES,
-    STR_LBL_QR,
     STR_BTN_START,
     STR_BTN_STOP,
     STR_BTN_GENPW,
