@@ -62,7 +62,8 @@ static const WCHAR *const kEN[STR_COUNT] = {
     /* STR_TRAY_START    */ L"Start service",
     /* STR_TRAY_STOP     */ L"Stop service",
     /* STR_TRAY_ADDRS    */ L"Refresh addresses",
-    /* STR_TRAY_QUIT     */ L"Quit LanTaskmgr"
+    /* STR_TRAY_QUIT     */ L"Quit LanTaskmgr",
+    /* STR_BTN_EXIT      */ L"Exit"
 };
 
 static const WCHAR *const kCN[STR_COUNT] = {
@@ -125,7 +126,8 @@ static const WCHAR *const kCN[STR_COUNT] = {
     /* STR_TRAY_START    */ L"启动服务",
     /* STR_TRAY_STOP     */ L"停止服务",
     /* STR_TRAY_ADDRS    */ L"刷新地址列表",
-    /* STR_TRAY_QUIT     */ L"退出程序"
+    /* STR_TRAY_QUIT     */ L"退出程序",
+    /* STR_BTN_EXIT      */ L"退出"
 };
 
 static const WCHAR *const kTW[STR_COUNT] = {
@@ -188,7 +190,8 @@ static const WCHAR *const kTW[STR_COUNT] = {
     /* STR_TRAY_START    */ L"啟動服務",
     /* STR_TRAY_STOP     */ L"停止服務",
     /* STR_TRAY_ADDRS    */ L"重新整理位址清單",
-    /* STR_TRAY_QUIT     */ L"結束程式"
+    /* STR_TRAY_QUIT     */ L"結束程式",
+    /* STR_BTN_EXIT      */ L"結束"
 };
 
 static const WCHAR *const *const kTables[LTM_LANG_COUNT] = { kEN, kCN, kTW };

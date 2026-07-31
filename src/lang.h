@@ -67,6 +67,7 @@ typedef enum ltm_str_id {
     STR_TRAY_STOP,
     STR_TRAY_ADDRS,
     STR_TRAY_QUIT,
+    STR_BTN_EXIT,
 
     STR_COUNT
 } ltm_str_id;

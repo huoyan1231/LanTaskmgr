@@ -46,7 +46,7 @@ static BOOL CALLBACK set_child_font(HWND child, LPARAM font);
 #define LTM_REFRESH_MS     3000
 
 #define DLG_W    420
-#define DLG_H    340
+#define DLG_H    375
 #define MARGIN   14
 #define GAP      8
 
@@ -60,7 +60,8 @@ enum {
     IDC_STATUS,
     IDC_ADDRESSES,
     IDC_GENERATE_PW,
-    IDC_HIDDEN
+    IDC_HIDDEN,
+    IDC_EXIT
 };
 
 static const int LANG_IDS[] = { LTM_LANG_EN, LTM_LANG_CN, LTM_LANG_TW };
@@ -485,6 +486,10 @@ static INT_PTR CALLBACK dlg_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
         case IDM_TRAY_QUIT:
             DestroyWindow(dlg);
             return 0;
+
+        case IDC_EXIT:
+            DestroyWindow(dlg);
+            return 0;
         }
         break;
 
@@ -521,7 +526,7 @@ static INT_PTR CALLBACK dlg_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     }
 
-    return FALSE;
+    return DefWindowProc(dlg, msg, wp, lp);
 }
 
 /* ------------------------------------------------------------------ */
@@ -551,10 +556,15 @@ static HWND create_main_dialog(HINSTANCE hinst)
 
     dlg = CreateWindowExW(
         WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE,
-        L"#32770", LTM_APP_NAME,
+        L"LanTaskmgrWCls", LTM_APP_NAME,
         WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
         CW_USEDEFAULT, CW_USEDEFAULT, DLG_W, DLG_H,
         NULL, NULL, hinst, NULL);
+
+    /* NOTE: the window uses a real window class (LanTaskmgrWCls) whose
+     * WNDPROC is dlg_proc. The built-in #32770 class created via
+     * CreateWindowExW does NOT attach a dialog procedure, which would leave
+     * the window inert and the process impossible to quit. */
 
     /* -- Row 0: Port ------------------------------------------------- */
     make_label(dlg, -1, ltm_str(STR_LBL_PORT), MARGIN, y, lw, eh);
@@ -602,12 +612,22 @@ static HWND create_main_dialog(HINSTANCE hinst)
     }
     y += eh + 2 + 85 + GAP;
 
+    /* -- Row 6: Exit ------------------------------------------------ */
+    make_button(dlg, IDC_EXIT, ltm_str(STR_BTN_EXIT),
+                DLG_W - MARGIN - bw, y, bw, bh);
+    y += bh + GAP;
+
 
     /* Set font to match the dialog. */
     {
         HFONT hf = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
         EnumChildWindows(dlg, set_child_font, (LPARAM)hf);
     }
+
+    /* CreateWindowExW on #32770 never sends WM_INITDIALOG, so fire it
+     * ourselves now that every control has been created.
+     */
+    SendMessageW(dlg, WM_INITDIALOG, 0, 0);
 
     return dlg;
 }
@@ -635,7 +655,7 @@ int ltm_ui_run(HINSTANCE hInstance, int nCmdShow)
     mutex = CreateMutexW(NULL, TRUE, LTM_MUTEX_NAME);
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
         /* Bring existing instance to front and exit. */
-        HWND other = FindWindowW(L"#32770", LTM_APP_NAME);
+        HWND other = FindWindowW(L"LanTaskmgrWCls", LTM_APP_NAME);
         if (other) {
             ShowWindow(other, SW_RESTORE);
             SetForegroundWindow(other);
@@ -649,6 +669,21 @@ int ltm_ui_run(HINSTANCE hInstance, int nCmdShow)
     ltm_log_init();
 
     InitCommonControls();
+
+    /* ---- register main window class ------------------------------- */
+    {
+        WNDCLASSEXW wc;
+        ZeroMemory(&wc, sizeof(wc));
+        wc.cbSize        = sizeof(wc);
+        wc.style         = CS_HREDRAW | CS_VREDRAW;
+        wc.lpfnWndProc   = (WNDPROC)dlg_proc;
+        wc.hInstance     = hInstance;
+        wc.hIcon         = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_APPICON));
+        wc.hCursor       = LoadCursorW(NULL, IDC_ARROW);
+        wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+        wc.lpszClassName = L"LanTaskmgrWCls";
+        RegisterClassExW(&wc);
+    }
 
     /* ---- create dialog -------------------------------------------- */
     dlg = create_main_dialog(hInstance);
