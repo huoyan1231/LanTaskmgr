@@ -1,3 +1,51 @@
+我很喜欢windows，但是它经常卡死，任务管理器都打不开
+
+尤其是曾几何时，我的电脑配置高达i5-337u+GT720m+4g
+
+卡顿更是家常便饭
+
+后来
+
+我看到了一个程序——RunTaskManagerOnYourPhone
+
+它可以让你的手机结束进程
+
+非常好用
+
+拯救我的电脑无数次
+
+后来我发现这个程序cpu占用有点问题，总是无缘无故占了20-30%
+
+然后我就没用他了
+
+后来设备也更新了，再也没用过这个软件
+
+但是，Windows又开始卡死了，我完全拿它没办法
+
+而Linux无法满足我的需求
+
+我又想起了曾经拯救我的程序
+
+但是现在连Github Repo都删了，我没法再下载到了
+
+后来，我在我的旧电脑中找到了这个程序，它仍然可用
+
+但是我想起了cpu占用的问题
+
+于是我重新写了一个
+
+
+
+
+
+这是使用C编写的版本
+
+我还有第二套方案，第二套使用Rust+Tarui
+
+使用起来没有区别，除了C版本UI比较简陋
+
+但是你在手机上打开的网页是一样的
+
 # LanTaskmgr
 
 Kill runaway processes on your PC from your phone's browser.
@@ -22,14 +70,14 @@ Since this tool is meant to be resident 24/7 and, crucially, to still respond
 when the machine is already out of resources, every byte of its footprint works
 against its own purpose. So it is written the other way round:
 
-| | original | LanTaskmgr |
-|---|---|---|
-| language | VB.NET | C11 |
-| runtime dependency | .NET Framework | none |
-| files to ship | 10 (`.exe` + 5 DLLs + web folder + languages) | 1 (`LanTaskmgr.exe`) |
-| JSON | Newtonsoft.Json | hand-written serialiser |
-| HTTP | Mono.Net.HttpListener | Winsock + `select()` |
-| threads | thread per request | 1 UI + 1 network |
+|                    | original                                      | LanTaskmgr              |
+| ------------------ | --------------------------------------------- | ----------------------- |
+| language           | VB.NET                                        | C11                     |
+| runtime dependency | .NET Framework                                | none                    |
+| files to ship      | 10 (`.exe` + 5 DLLs + web folder + languages) | 1 (`LanTaskmgr.exe`)    |
+| JSON               | Newtonsoft.Json                               | hand-written serialiser |
+| HTTP               | Mono.Net.HttpListener                         | Winsock + `select()`    |
+| threads            | thread per request                            | 1 UI + 1 network        |
 
 Everything the browser loads (HTML, CSS, JS) is embedded in the executable as
 `RCDATA` and served straight from the mapped PE image — no file I/O and no heap
