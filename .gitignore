@@ -1,0 +1,22 @@
+# Build output
+/build/
+/out/
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.res
+*.lib
+*.exp
+*.map
+
+# Runtime files produced by the app next to the binary
+settings.ini
+lantaskmgr.log
+
+# Editors / OS
+.vs/
+.vscode/
+*.user
+Thumbs.db
+desktop.ini
