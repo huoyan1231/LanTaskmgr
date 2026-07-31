@@ -1,0 +1,72 @@
+# ===========================================================================
+#  LanTaskmgr — automatic build & release (portable edition only)
+#
+#  Triggers:
+#    * Push a tag named vX.Y.Z  (e.g.  git tag v1.0.0 && git push --tags)
+#    * Manual run via "Run workflow" with an optional version input
+#
+#  Result: a GitHub Release is created containing the portable zip:
+#    LanTaskmgr-Portable-x64.zip  (LanTaskmgr.exe + LICENSE + README.md)
+#
+#  The binary is already fully self-contained (statically linked CRT, web
+#  UI embedded in the exe), so the portable zip needs no installer.
+# ===========================================================================
+
+name: Build & Release (Portable)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, e.g. 1.0.0 (required for manual runs)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & publish portable release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: meta
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VER="${{ github.event.inputs.version }}"
+            TAG="v${VER}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            VER="${GITHUB_REF_NAME#v}"
+          fi
+          echo "ver=${VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build (release x64)
+        shell: cmd
+        run: .\build.bat release
+
+      - name: Package portable edition
+        shell: pwsh
+        run: |
+          $dst = "portable\LanTaskmgr"
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          Copy-Item build\LanTaskmgr.exe $dst\
+          Copy-Item LICENSE              $dst\
+          Copy-Item README.md            $dst\
+          Compress-Archive -Path $dst -DestinationPath LanTaskmgr-Portable-x64.zip -Force
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: LanTaskmgr ${{ steps.meta.outputs.ver }}
+          files: |
+            LanTaskmgr-Portable-x64.zip
