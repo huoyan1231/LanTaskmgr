@@ -149,38 +149,110 @@ BOOL ltm_buf_printf(ltm_buf *b, const char *fmt, ...)
 BOOL ltm_buf_put_json_escaped(ltm_buf *b, const char *s)
 {
     const unsigned char *p;
+    const unsigned char *run;
 
     if (s == NULL) {
         return TRUE;
     }
-    for (p = (const unsigned char *)s; *p != '\0'; ++p) {
+    /* Emit runs of plain bytes in a single append; only characters that need
+     * escaping break the run. This collapses hundreds of 1-6 byte appends per
+     * process name/title into a handful of bulk appends. */
+    run = p = (const unsigned char *)s;
+    while (*p != '\0') {
         unsigned char c = *p;
-        BOOL ok;
+        BOOL          special;
         switch (c) {
-        case '"':  ok = ltm_buf_append(b, "\\\"", 2); break;
-        case '\\': ok = ltm_buf_append(b, "\\\\", 2); break;
-        case '\n': ok = ltm_buf_append(b, "\\n", 2);  break;
-        case '\r': ok = ltm_buf_append(b, "\\r", 2);  break;
-        case '\t': ok = ltm_buf_append(b, "\\t", 2);  break;
-        case '\b': ok = ltm_buf_append(b, "\\b", 2);  break;
-        case '\f': ok = ltm_buf_append(b, "\\f", 2);  break;
-        case '<':  ok = ltm_buf_append(b, "\\u003c", 6); break; /* defuse </script> */
-        case '>':  ok = ltm_buf_append(b, "\\u003e", 6); break;
-        case '&':  ok = ltm_buf_append(b, "\\u0026", 6); break;
+        case '"':  case '\\': case '\n': case '\r':
+        case '\t': case '\b': case '\f':
+        case '<':  case '>':  case '&':
+            special = TRUE; break;
         default:
-            if (c < 0x20) {
-                ok = ltm_buf_printf(b, "\\u%04x", (unsigned)c);
-            } else {
-                ok = ltm_buf_putc(b, (char)c);
-            }
+            special = (c < 0x20);
             break;
         }
-        if (!ok) {
+        if (special) {
+            if (p > run) {
+                if (!ltm_buf_append(b, run, (size_t)(p - run))) {
+                    return FALSE;
+                }
+            }
+            {
+                const char *esc = NULL;
+                size_t      n = 0;
+                switch (c) {
+                case '"':  esc = "\\\"",  n = 2; break;
+                case '\\': esc = "\\\\",  n = 2; break;
+                case '\n': esc = "\\n",   n = 2; break;
+                case '\r': esc = "\\r",   n = 2; break;
+                case '\t': esc = "\\t",   n = 2; break;
+                case '\b': esc = "\\b",   n = 2; break;
+                case '\f': esc = "\\f",   n = 2; break;
+                case '<':  esc = "\\u003c", n = 6; break; /* defuse </script> */
+                case '>':  esc = "\\u003e", n = 6; break;
+                case '&':  esc = "\\u0026", n = 6; break;
+                default: /* control char < 0x20 */
+                {
+                    char buf[8];
+                    _snprintf_s(buf, sizeof(buf), _TRUNCATE, "\\u%04x", (unsigned)c);
+                    if (!ltm_buf_puts(b, buf)) {
+                        return FALSE;
+                    }
+                }
+                run = p + 1;
+                ++p;
+                continue;
+                }
+                if (!ltm_buf_append(b, esc, n)) {
+                    return FALSE;
+                }
+            }
+            run = p + 1;
+        }
+        ++p;
+    }
+    if (p > run) {
+        if (!ltm_buf_append(b, run, (size_t)(p - run))) {
             return FALSE;
         }
     }
     return TRUE;
 }
+
+/* Convert a UTF-16 string to UTF-8 in a stack scratch and JSON-escape it in
+ * one pass. Avoids both the per-process heap allocation and the extra
+ * WideCharToMultiByte that a separate utf16_to_utf8() call would incur. */
+BOOL ltm_buf_put_json_escaped_w(ltm_buf *b, const WCHAR *ws)
+{
+    char  scratch[512];
+    char *utf8;
+    int   need;
+    BOOL  own = FALSE;
+    BOOL  ok;
+
+    if (ws == NULL) {
+        return TRUE;
+    }
+    need = WideCharToMultiByte(CP_UTF8, 0, ws, -1, NULL, 0, NULL, NULL);
+    if (need <= 1) {
+        return TRUE; /* empty */
+    }
+    if ((size_t)need <= sizeof(scratch)) {
+        utf8 = scratch;
+    } else {
+        utf8 = (char *)ltm_alloc((size_t)need);
+        if (utf8 == NULL) {
+            return FALSE;
+        }
+        own = TRUE;
+    }
+    WideCharToMultiByte(CP_UTF8, 0, ws, -1, utf8, need, NULL, NULL);
+    ok = ltm_buf_put_json_escaped(b, utf8);
+    if (own) {
+        ltm_free(utf8);
+    }
+    return ok;
+}
+
 
 /* ------------------------------------------------------------------ */
 /* Text conversion                                                     */

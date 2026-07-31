@@ -173,14 +173,9 @@ static BOOL CALLBACK enum_windows_cb(HWND hwnd, LPARAM lparam)
 {
     enum_ctx *ctx = (enum_ctx *)lparam;
     DWORD     pid = 0;
-    int       len;
     int       i;
 
     if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER) != NULL) {
-        return TRUE;
-    }
-    len = GetWindowTextLengthW(hwnd);
-    if (len <= 0) {
         return TRUE;
     }
     GetWindowThreadProcessId(hwnd, &pid);
@@ -202,7 +197,11 @@ static BOOL CALLBACK enum_windows_cb(HWND hwnd, LPARAM lparam)
         ctx->cap = ncap;
     }
     ctx->items[ctx->count].pid = pid;
-    GetWindowTextW(hwnd, ctx->items[ctx->count].title, LTM_PROC_TITLE_MAX);
+    /* Get the caption directly; this also lets us skip windows with no title
+     * in one call instead of a separate GetWindowTextLengthW round-trip. */
+    if (GetWindowTextW(hwnd, ctx->items[ctx->count].title, LTM_PROC_TITLE_MAX) <= 0) {
+        return TRUE; /* no caption: skip */
+    }
     ctx->items[ctx->count].title[LTM_PROC_TITLE_MAX - 1] = L'\0';
     ctx->count++;
     return TRUE;

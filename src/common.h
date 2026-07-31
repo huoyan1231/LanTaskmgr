@@ -66,6 +66,9 @@ BOOL ltm_buf_putc(ltm_buf *b, char c);
 BOOL ltm_buf_printf(ltm_buf *b, const char *fmt, ...);
 /* Appends `s` with JSON string escaping (no surrounding quotes). */
 BOOL ltm_buf_put_json_escaped(ltm_buf *b, const char *s);
+/* Same, but takes a UTF-16 string and converts to UTF-8 in a stack scratch
+ * (no heap allocation for typical process names/titles). */
+BOOL ltm_buf_put_json_escaped_w(ltm_buf *b, const WCHAR *ws);
 
 /* ------------------------------------------------------------------ */
 /* Text conversion                                                     */

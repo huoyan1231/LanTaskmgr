@@ -373,20 +373,21 @@ static void handle_list(ltm_http_response *res)
         return;
     }
 
+    /* Pre-size the body buffer so the item loop does not reallocate. */
+    ltm_buf_reserve(&res->body, (size_t)snap.count * 64 + 256);
+
     for (i = 0; i < snap.count; ++i) {
         const ltm_proc_group *g = &snap.items[i];
-        char *name = ltm_utf16_to_utf8(g->name, -1);
-        char *title = (g->title[0] != L'\0') ? ltm_utf16_to_utf8(g->title, -1) : NULL;
 
         if (i > 0) {
             ltm_buf_putc(&res->body, ',');
         }
         ltm_buf_puts(&res->body, "{\"n\":\"");
-        ltm_buf_put_json_escaped(&res->body, (name != NULL) ? name : "?");
+        ltm_buf_put_json_escaped_w(&res->body, g->name);
         ltm_buf_puts(&res->body, "\"");
-        if (title != NULL) {
+        if (g->title[0] != L'\0') {
             ltm_buf_puts(&res->body, ",\"t\":\"");
-            ltm_buf_put_json_escaped(&res->body, title);
+            ltm_buf_put_json_escaped_w(&res->body, g->title);
             ltm_buf_puts(&res->body, "\"");
         }
         ltm_buf_printf(&res->body, ",\"c\":%d,\"i\":%lu,\"m\":%llu,\"p\":%.1f",
@@ -396,9 +397,6 @@ static void handle_list(ltm_http_response *res)
             ltm_buf_puts(&res->body, ",\"k\":1");
         }
         ltm_buf_putc(&res->body, '}');
-
-        ltm_free(name);
-        ltm_free(title);
     }
 
     ltm_buf_puts(&res->body, "]}");
