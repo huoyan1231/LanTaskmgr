@@ -34,7 +34,7 @@ extern ltm_config g_cfg;
 /* Loads settings.ini, filling in defaults for anything missing.
  * Returns FALSE when the file did not exist (first run). */
 BOOL ltm_config_load(void);
-BOOL ltm_config_save(void);
+BOOL ltm_config_save(BOOL *ok_out);  /* ok_out may be NULL */
 void ltm_config_defaults(void);
 
 const WCHAR *ltm_lang_code(ltm_lang_id id);      /* "EN" / "CN" / "TW" */

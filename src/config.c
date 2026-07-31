@@ -2,6 +2,7 @@
 #include "logging.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 ltm_config g_cfg;
@@ -186,7 +187,7 @@ BOOL ltm_config_load(void)
     return found_any;
 }
 
-BOOL ltm_config_save(void)
+BOOL ltm_config_save(BOOL *ok_out)
 {
     WCHAR  path[MAX_PATH];
     WCHAR  textw[1024];
@@ -231,5 +232,6 @@ BOOL ltm_config_save(void)
     ok = WriteFile(h, utf8, (DWORD)strlen(utf8), &written, NULL);
     CloseHandle(h);
     ltm_free(utf8);
+    if (ok_out) { *ok_out = ok; }
     return ok;
 }

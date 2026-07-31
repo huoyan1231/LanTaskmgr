@@ -20,10 +20,19 @@
 #include "assets.h"
 #include "config.h"
 #include "http.h"
+#include "lang.h"
 #include "logging.h"
 #include "netinfo.h"
 #include "procs.h"
 #include "qrcode.h"
+#include "resource.h"
+
+#include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
+
+/* Forward declarations for static functions used before definition. */
+static BOOL CALLBACK set_child_font(HWND child, LPARAM font);
 
 #include <commctrl.h>
 #include <shellapi.h>
@@ -238,14 +247,10 @@ static void server_start(HWND dlg)
             int n = ltm_net_list_addresses(addrs, 16);
             if (n > 0) {
                 WCHAR url[128];
+                WCHAR full[128];
                 build_url(url, _countof(url), port);
                 /* Replace '*' with the actual IP. */
-                wchar_t ip[46];
-                MultiByteToWideChar(CP_UTF8, 0, addrs[0].ip, -1,
-                                   ip, (int)_countof(ip));
-                wcsncpy_s(url, _countof(url), ip + 2, _TRUNCATE); /* skip http: */
-                /* url is now like "192.168.1.5:8080" — prepend http:// */
-                WCHAR full[128];
+                wcsncpy_s(url, _countof(url), addrs[0].ip + 2, _TRUNCATE); /* skip http: */
                 _snwprintf_s(full, _countof(full), _TRUNCATE, L"http://%s", url);
                 draw_qr(GetDlgItem(dlg, IDC_QR), full);
             }
@@ -301,12 +306,9 @@ static void refresh_addresses(HWND dlg)
 
     for (i = 0; i < n; i++) {
         WCHAR entry[128];
-        wchar_t ip[46];
-        MultiByteToWideChar(CP_UTF8, 0, addrs[i].ip, -1,
-                           ip, (int)_countof(ip));
         _snwprintf_s(entry, _countof(entry), _TRUNCATE,
-                     L"http:%s:%d%s", ip, port,
-                     addrs[i].has_gateway ? L"  ★" : L"");
+                     L"http:%s:%d%s", addrs[i].ip, port,
+                     addrs[i].has_gateway ? L"  \u2605" : L"");
         SendMessageW(lb, LB_ADDSTRING, 0, (LPARAM)entry);
     }
     if (n == 0) {
@@ -417,54 +419,54 @@ static void tray_show_menu(void)
 static HWND make_label(HWND parent, int id, const WCHAR *text, int x, int y,
                         int w, int h)
 {
-    HWND h = CreateWindowExW(0, L"STATIC", text,
+    HWND lbl = CreateWindowExW(0, L"STATIC", text,
                              WS_CHILD | WS_VISIBLE,
                              x, y, w, h, parent, (HMENU)(INT_PTR)id,
                              g_hinst, NULL);
-    return h;
+    return lbl;
 }
 
 static HWND make_edit(HWND parent, int id, int x, int y, int w, int h)
 {
-    HWND h = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
+    HWND ed = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
                              WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
                              x, y, w, h, parent, (HMENU)(INT_PTR)id,
                              g_hinst, NULL);
-    return h;
+    return ed;
 }
 
 static HWND make_button(HWND parent, int id, const WCHAR *text, int x, int y,
                         int w, int h)
 {
-    HWND h = CreateWindowExW(0, L"BUTTON", text,
+    HWND btn = CreateWindowExW(0, L"BUTTON", text,
                              WS_CHILD | WS_VISIBLE | WS_TABSTOP |
                                  ((id == IDC_START || id == IDC_STOP ||
                                    id == IDC_GENERATE_PW)
                                   ? BS_DEFPUSHBUTTON : 0),
                              x, y, w, h, parent, (HMENU)(INT_PTR)id,
                              g_hinst, NULL);
-    return h;
+    return btn;
 }
 
 static HWND make_combo(HWND parent, int id, int x, int y, int w, int h)
 {
-    HWND h = CreateWindowExW(0, L"COMBOBOX", L"",
+    HWND cbo = CreateWindowExW(0, L"COMBOBOX", L"",
                              WS_CHILD | WS_VISIBLE | WS_TABSTOP |
                                  CBS_DROPDOWNLIST | CBS_HASSTRINGS,
                              x, y, w, h, parent, (HMENU)(INT_PTR)id,
                              g_hinst, NULL);
-    return h;
+    return cbo;
 }
 
 static HWND make_checkbox(HWND parent, int id, const WCHAR *text, int x, int y,
                           int w, int h)
 {
-    HWND h = CreateWindowExW(0, L"BUTTON", text,
+    HWND chk = CreateWindowExW(0, L"BUTTON", text,
                              WS_CHILD | WS_VISIBLE | WS_TABSTOP |
                                  BS_AUTOCHECKBOX,
                              x, y, w, h, parent, (HMENU)(INT_PTR)id,
                              g_hinst, NULL);
-    return h;
+    return chk;
 }
 
 static void populate_dialog(HWND dlg)
@@ -758,14 +760,16 @@ static HWND create_main_dialog(HINSTANCE hinst)
     /* Set font to match the dialog. */
     {
         HFONT hf = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
-        EnumChildWindows(dlg, (WNDENUMPROC)(BOOL(*)(HWND,LPARAM))
-                         [](HWND child, LPARAM font) -> BOOL {
-            SendMessageW(child, WM_SETFONT, (WPARAM)font, TRUE);
-            return TRUE;
-        }, (LPARAM)hf);
+        EnumChildWindows(dlg, set_child_font, (LPARAM)hf);
     }
 
     return dlg;
+}
+
+static BOOL CALLBACK set_child_font(HWND child, LPARAM font)
+{
+    SendMessageW(child, WM_SETFONT, (WPARAM)font, TRUE);
+    return TRUE;
 }
 
 /* ------------------------------------------------------------------ */

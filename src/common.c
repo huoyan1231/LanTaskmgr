@@ -2,6 +2,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* RtlGenRandom. Declared by hand so we do not have to pull in <ntsecapi.h>
