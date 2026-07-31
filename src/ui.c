@@ -60,6 +60,7 @@ enum {
     IDC_STATUS,
     IDC_ADDRESSES,
     IDC_GENERATE_PW,
+    IDC_TOGGLE_PW,
     IDC_HIDDEN,
     IDC_EXIT
 };
@@ -460,6 +461,26 @@ static INT_PTR CALLBACK dlg_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
             return 0;
         }
 
+        case IDC_TOGGLE_PW:
+        {
+            HWND ed = GetDlgItem(dlg, IDC_PASSWORD);
+            WPARAM current = SendMessageW(ed, EM_GETPASSWORDCHAR, 0, 0);
+            if (current == 0) {
+                /* Currently visible → hide with '*'. */
+                SendMessageW(ed, EM_SETPASSWORDCHAR, (WPARAM)'*', 0);
+                SetDlgItemTextW(dlg, IDC_TOGGLE_PW,
+                                ltm_str(STR_BTN_SHOW_PW));
+            } else {
+                /* Currently hidden → show. */
+                SendMessageW(ed, EM_SETPASSWORDCHAR, 0, 0);
+                SetDlgItemTextW(dlg, IDC_TOGGLE_PW,
+                                ltm_str(STR_BTN_HIDE_PW));
+            }
+            /* Force repaint so the edit redraws with new style. */
+            InvalidateRect(ed, NULL, TRUE);
+            return 0;
+        }
+
         case IDM_TRAY_SHOW:
             ShowWindow(dlg, SW_SHOW);
             SetForegroundWindow(dlg);
@@ -577,9 +598,12 @@ static HWND create_main_dialog(HINSTANCE hinst)
     /* -- Row 1: Password --------------------------------------------- */
     make_label(dlg, -1, ltm_str(STR_LBL_PASSWORD), MARGIN, y, lw, eh);
     c = make_edit(dlg, IDC_PASSWORD, MARGIN + lw + GAP, y, ew, eh);
-    SendMessageW(c, EM_SETPASSWORDCHAR, (WPARAM)'*', 0);
+    /* Default: password is VISIBLE (no EM_SETPASSWORDCHAR). The toggle
+     * button next to it switches between clear and masked ('*'). */
+    make_button(dlg, IDC_TOGGLE_PW, ltm_str(STR_BTN_HIDE_PW),
+                MARGIN + lw + ew + GAP * 2, y, 28, eh);
     make_button(dlg, IDC_GENERATE_PW, ltm_str(STR_BTN_GENPW),
-                MARGIN + lw + ew + GAP * 2, y, bw + 20, bh);
+                MARGIN + lw + ew + GAP * 3 + 28, y, bw + 20, bh);
     y += eh + GAP + 4;
 
     /* -- Row 2: Language --------------------------------------------- */
