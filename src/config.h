@@ -25,6 +25,7 @@ typedef struct ltm_config {
     ltm_lang_id lang;
     BOOL        autostart;   /* mirrors the HKCU Run registry value */
     BOOL        start_hidden; /* launch minimised to tray */
+    BOOL        auto_start_svc; /* start HTTP service immediately on launch */
 } ltm_config;
 
 /* The single global configuration instance. */

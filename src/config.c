@@ -56,6 +56,7 @@ void ltm_config_defaults(void)
     g_cfg.lang = ltm_lang_detect_system();
     g_cfg.autostart = FALSE;
     g_cfg.start_hidden = FALSE;
+    g_cfg.auto_start_svc = TRUE; /* most users expect the service to start */
 
     /* A random 6 digit first-run password beats shipping "1234" like the
      * original did: the service listens on the LAN from the very first start. */
@@ -176,6 +177,8 @@ BOOL ltm_config_load(void)
             g_cfg.autostart = (_wtoi(val) != 0);
         } else if (_wcsicmp(key, L"StartHidden") == 0) {
             g_cfg.start_hidden = (_wtoi(val) != 0);
+        } else if (_wcsicmp(key, L"AutoStartSvc") == 0) {
+            g_cfg.auto_start_svc = (_wtoi(val) != 0);
         }
     }
 
@@ -204,9 +207,11 @@ BOOL ltm_config_save(void)
                      L"Password=%s\r\n"
                      L"Language=%s\r\n"
                      L"AutoStart=%d\r\n"
-                     L"StartHidden=%d\r\n",
+                     L"StartHidden=%d\r\n"
+                     L"AutoStartSvc=%d\r\n",
                      g_cfg.port, g_cfg.password, ltm_lang_code(g_cfg.lang),
-                     g_cfg.autostart ? 1 : 0, g_cfg.start_hidden ? 1 : 0);
+                     g_cfg.autostart ? 1 : 0, g_cfg.start_hidden ? 1 : 0,
+                     g_cfg.auto_start_svc ? 1 : 0);
     if (n <= 0) {
         return FALSE;
     }

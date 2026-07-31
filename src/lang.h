@@ -45,6 +45,30 @@ typedef enum ltm_str_id {
     STR_ALREADY_RUNNING,
     STR_ABOUT,
     STR_ABOUT_TEXT,
+
+    /* --- ui.c desktop window --------------------------------------- */
+    STR_ERR_PORT,
+    STR_ERR_BIND,
+    STR_STATUS_RUNNING,
+    STR_STATUS_STOPPED,
+    STR_LBL_PORT,
+    STR_LBL_PASSWORD,
+    STR_LBL_LANG,
+    STR_LBL_STATUS,
+    STR_LBL_ADDRESSES,
+    STR_LBL_QR,
+    STR_BTN_START,
+    STR_BTN_STOP,
+    STR_BTN_GENPW,
+    STR_CHK_AUTO,
+    STR_CHK_HIDDEN,
+    STR_NO_ADDRESSES,
+    STR_TRAY_SHOW,
+    STR_TRAY_START,
+    STR_TRAY_STOP,
+    STR_TRAY_ADDRS,
+    STR_TRAY_QUIT,
+
     STR_COUNT
 } ltm_str_id;
 

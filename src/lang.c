@@ -42,7 +42,28 @@ static const WCHAR *const kEN[STR_COUNT] = {
                              L"Written in C against the Win32 API only - no runtime, no\r\n"
                              L"third-party libraries, no background services.\r\n\r\n"
                              L"Functional rewrite of \"Run Task Manager On Your Phone\"\r\n"
-                             L"by Gordon Walkedby."
+                             L"by Gordon Walkedby.",
+    /* STR_ERR_PORT       */ L"Port must be between 1 and 65535.",
+    /* STR_ERR_BIND       */ L"Cannot bind to port",
+    /* STR_STATUS_RUNNING*/ L"\u25b6 Running \u2014 listening on port %d",
+    /* STR_STATUS_STOPPED */ L"\u25a0 Stopped",
+    /* STR_LBL_PORT      */ L"Port",
+    /* STR_LBL_PASSWORD  */ L"Password",
+    /* STR_LBL_LANG      */ L"Language",
+    /* STR_LBL_STATUS    */ L"Status",
+    /* STR_LBL_ADDRESSES */ L"LAN addresses (tap one to copy)",
+    /* STR_LBL_QR        */ L"QR code (scan with your phone)",
+    /* STR_BTN_START     */ L"Start",
+    /* STR_BTN_STOP      */ L"Stop",
+    /* STR_BTN_GENPW     */ L"Random",
+    /* STR_CHK_AUTO      */ L"Start with Windows",
+    /* STR_CHK_HIDDEN    */ L"Start minimised to tray",
+    /* STR_NO_ADDRESSES  */ L"(no LAN address found)",
+    /* STR_TRAY_SHOW     */ L"Show LanTaskmgr",
+    /* STR_TRAY_START    */ L"Start service",
+    /* STR_TRAY_STOP     */ L"Stop service",
+    /* STR_TRAY_ADDRS    */ L"Refresh addresses",
+    /* STR_TRAY_QUIT     */ L"Quit LanTaskmgr"
 };
 
 static const WCHAR *const kCN[STR_COUNT] = {
@@ -85,7 +106,28 @@ static const WCHAR *const kCN[STR_COUNT] = {
                              L"纯 C + Win32 API 编写，不依赖任何运行时、\r\n"
                              L"第三方库或后台服务。\r\n\r\n"
                              L"功能复刻自 戈登走過去 的\r\n"
-                             L"「Run Task Manager On Your Phone」。"
+                             L"「Run Task Manager On Your Phone」。",
+    /* STR_ERR_PORT       */ L"端口必须是 1 到 65535 之间的数字。",
+    /* STR_ERR_BIND       */ L"无法绑定到端口",
+    /* STR_STATUS_RUNNING*/ L"\u25b6 运行中 \u2014 监听端口 %d",
+    /* STR_STATUS_STOPPED */ L"\u25a0 已停止",
+    /* STR_LBL_PORT      */ L"端口",
+    /* STR_LBL_PASSWORD  */ L"密码",
+    /* STR_LBL_LANG      */ L"语言",
+    /* STR_LBL_STATUS    */ L"状态",
+    /* STR_LBL_ADDRESSES */ L"局域网地址（点击复制）",
+    /* STR_LBL_QR        */ L"二维码（用手机扫描）",
+    /* STR_BTN_START     */ L"启动服务",
+    /* STR_BTN_STOP      */ L"停止服务",
+    /* STR_BTN_GENPW     */ L"随机生成",
+    /* STR_CHK_AUTO      */ L"开机自动启动",
+    /* STR_CHK_HIDDEN    */ L"启动时最小化到托盘",
+    /* STR_NO_ADDRESSES  */ L"（未找到局域网地址）",
+    /* STR_TRAY_SHOW     */ L"显示主窗口",
+    /* STR_TRAY_START    */ L"启动服务",
+    /* STR_TRAY_STOP     */ L"停止服务",
+    /* STR_TRAY_ADDRS    */ L"刷新地址列表",
+    /* STR_TRAY_QUIT     */ L"退出程序"
 };
 
 static const WCHAR *const kTW[STR_COUNT] = {
@@ -128,7 +170,28 @@ static const WCHAR *const kTW[STR_COUNT] = {
                              L"純 C + Win32 API 撰寫，不依賴任何執行環境、\r\n"
                              L"第三方函式庫或背景服務。\r\n\r\n"
                              L"功能重製自 戈登走過去 的\r\n"
-                             L"「Run Task Manager On Your Phone」。"
+                             L"「Run Task Manager On Your Phone」。",
+    /* STR_ERR_PORT       */ L"連接埠必須是 1 到 65535 之間的數字。",
+    /* STR_ERR_BIND       */ L"無法綁定到連接埠",
+    /* STR_STATUS_RUNNING*/ L"\u25b6 執行中 \u2014 監聽連接埠 %d",
+    /* STR_STATUS_STOPPED */ L"\u25a0 已關閉",
+    /* STR_LBL_PORT      */ L"連接埠",
+    /* STR_LBL_PASSWORD  */ L"密碼",
+    /* STR_LBL_LANG      */ L"語言",
+    /* STR_LBL_STATUS    */ L"狀態",
+    /* STR_LBL_ADDRESSES */ L"區域網路位址（點擊複製）",
+    /* STR_LBL_QR        */ L"QR Code（用手機掃描）",
+    /* STR_BTN_START     */ L"啟動服務",
+    /* STR_BTN_STOP      */ L"停止服務",
+    /* STR_BTN_GENPW     */ L"隨機產生",
+    /* STR_CHK_AUTO      */ L"開機時自動啟動",
+    /* STR_CHK_HIDDEN    */ L"啟動時最小化至通知區",
+    /* STR_NO_ADDRESSES  */ L"（找不到區域網路位址）",
+    /* STR_TRAY_SHOW     */ L"顯示主視窗",
+    /* STR_TRAY_START    */ L"啟動服務",
+    /* STR_TRAY_STOP     */ L"停止服務",
+    /* STR_TRAY_ADDRS    */ L"重新整理位址清單",
+    /* STR_TRAY_QUIT     */ L"結束程式"
 };
 
 static const WCHAR *const *const kTables[LTM_LANG_COUNT] = { kEN, kCN, kTW };
