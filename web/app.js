@@ -225,7 +225,7 @@
 
     form.onsubmit = function (ev) {
       ev.preventDefault();
-      if (busy || !pw.value) { return; }
+      if (busy) { return; }
       busy = true;
       btn.disabled = true;
       btn.textContent = t('loggingIn');

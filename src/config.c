@@ -49,9 +49,6 @@ ltm_lang_id ltm_lang_detect_system(void)
 
 void ltm_config_defaults(void)
 {
-    unsigned char rnd[4];
-    unsigned      v;
-
     ZeroMemory(&g_cfg, sizeof(g_cfg));
     g_cfg.port = LTM_DEFAULT_PORT;
     g_cfg.lang = ltm_lang_detect_system();
@@ -59,12 +56,9 @@ void ltm_config_defaults(void)
     g_cfg.start_hidden = FALSE;
     g_cfg.auto_start_svc = TRUE; /* most users expect the service to start */
 
-    /* A random 6 digit first-run password beats shipping "1234" like the
-     * original did: the service listens on the LAN from the very first start. */
-    ltm_random_bytes(rnd, sizeof(rnd));
-    v = ((unsigned)rnd[0] << 24) | ((unsigned)rnd[1] << 16) |
-        ((unsigned)rnd[2] << 8) | (unsigned)rnd[3];
-    _snwprintf_s(g_cfg.password, LTM_PASSWORD_MAX, _TRUNCATE, L"%06u", v % 1000000u);
+    /* Default password is empty: the server runs without a password on first
+     * launch. Set your own in the dialog if you want LAN access protected.
+     * g_cfg.password is already zeroed by the ZeroMemory above. */
 }
 
 static void config_path(WCHAR *out, size_t cap)

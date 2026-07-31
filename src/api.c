@@ -265,7 +265,9 @@ static void handle_login(const ltm_http_request *req, ltm_http_response *res)
 
     ip_to_string(req->client_ip, ipstr, sizeof(ipstr));
 
-    if (req->body_len == 0 || req->body_len > 256) {
+    /* An empty body is a valid (empty) password attempt; only reject an
+     * over-long body. */
+    if (req->body_len > 256) {
         ltm_http_set_text(res, 400, "text/plain", "bad");
         return;
     }

@@ -55,8 +55,8 @@ runs on a bare Windows install.
 Run the executable. The window shows the LAN addresses this PC is reachable on
 and the settings.
 
-1. Note the password (a random 6-digit one is generated on first run) or set
-   your own.
+1. The server starts with an empty password (no login prompt) by default; set
+   your own in the dialog if you want LAN access protected.
 2. On your phone (same Wi-Fi/LAN), open one of those LAN addresses in a browser.
 3. Log in, tap a process, confirm.
 
@@ -88,7 +88,7 @@ refused by the server rather than merely warned about.
 ```ini
 [LanTaskmgr]
 Port=5555
-Password=428913
+Password=        ; leave empty to disable the login prompt
 Language=CN        ; EN | CN | TW
 AutoStart=0
 StartHidden=0
@@ -112,7 +112,7 @@ accordingly:
 ## Differences from the original
 
 * Added: memory and CPU per process, sorting/filtering, dark mode, minimise to
-  tray, random first-run password.
+  tray, empty first-run password (no prompt by default).
 * Dropped: the built-in update check (there is no update server for this
   rewrite) and the external `Languages\*.xml` folder, which is now compiled in.
 

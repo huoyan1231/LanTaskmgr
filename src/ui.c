@@ -382,11 +382,10 @@ static void save_from_dialog(HWND dlg)
     g_cfg.port = (unsigned short)_wtoi(buf);
     if (g_cfg.port == 0) { g_cfg.port = 9527; }
 
-    /* Password */
+    /* Password (may be empty: an empty password means the server runs
+     * without authentication on the LAN). */
     GetDlgItemTextW(dlg, IDC_PASSWORD, buf, _countof(buf));
-    if (buf[0]) {
-        wcsncpy_s(g_cfg.password, _countof(g_cfg.password), buf, _TRUNCATE);
-    }
+    wcsncpy_s(g_cfg.password, _countof(g_cfg.password), buf, _TRUNCATE);
 
     /* Language */
     {
