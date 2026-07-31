@@ -1,0 +1,514 @@
+/* LanTaskmgr - single stylesheet for both pages.
+ * Mobile first, no framework, no web fonts, no network requests. */
+
+:root {
+  --bg:        #f2f3f5;
+  --surface:   #ffffff;
+  --surface-2: #e9eaee;
+  --line:      #d9dbe1;
+  --text:      #14161a;
+  --text-dim:  #5f6472;
+  --accent:    #2b6cf6;
+  --accent-fg: #ffffff;
+  --danger:    #d92b2b;
+  --warn:      #a8631a;
+  --ok:        #1f8a4c;
+  --shadow:    0 1px 2px rgba(0, 0, 0, .10), 0 6px 18px rgba(0, 0, 0, .06);
+  --radius:    14px;
+  --safe-b:    env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:        #0f1115;
+    --surface:   #181b21;
+    --surface-2: #22262e;
+    --line:      #2c313a;
+    --text:      #e7e9ee;
+    --text-dim:  #949aa8;
+    --accent:    #4c8dff;
+    --accent-fg: #08111f;
+    --danger:    #ff5f56;
+    --warn:      #e0a44a;
+    --ok:        #4fd18b;
+    --shadow:    0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px rgba(0, 0, 0, .35);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+}
+
+button, input {
+  font: inherit;
+  color: inherit;
+}
+
+button { cursor: pointer; }
+
+h1, h2 { margin: 0; font-weight: 650; }
+
+/* ================================================================== */
+/* Login                                                              */
+/* ================================================================== */
+
+.page-login .wrap {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 26px;
+  padding: 32px 22px calc(32px + var(--safe-b));
+  max-width: 430px;
+  margin: 0 auto;
+}
+
+.hero { text-align: center; }
+
+.hero h1 { font-size: 26px; letter-spacing: -.4px; }
+
+.hero .sub {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.mark {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 16px;
+  border-radius: 16px;
+  background: var(--accent);
+  position: relative;
+  box-shadow: var(--shadow);
+}
+
+/* Three bars, like a load meter. Drawn with pseudo elements + gradient so
+ * the page needs no image asset at all. */
+.mark::before {
+  content: "";
+  position: absolute;
+  left: 15px;
+  right: 15px;
+  bottom: 16px;
+  height: 26px;
+  background:
+    linear-gradient(var(--accent-fg), var(--accent-fg)) 0    100% / 6px 40% no-repeat,
+    linear-gradient(var(--accent-fg), var(--accent-fg)) 50%  100% / 6px 100% no-repeat,
+    linear-gradient(var(--accent-fg), var(--accent-fg)) 100% 100% / 6px 66% no-repeat;
+  opacity: .95;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.card input {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 13px 14px;
+  font-size: 17px; /* >=16px stops iOS Safari zooming on focus */
+  letter-spacing: 2px;
+  outline: none;
+}
+
+.card input:focus { border-color: var(--accent); }
+
+.card button[type="submit"] {
+  margin-top: 4px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: 0;
+  border-radius: 10px;
+  padding: 13px;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.card button[type="submit"]:disabled { opacity: .55; }
+
+.msg {
+  margin: 2px 0 0;
+  min-height: 1.2em;
+  font-size: 13px;
+  color: var(--danger);
+  text-align: center;
+}
+
+.foot {
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* ================================================================== */
+/* Manager                                                            */
+/* ================================================================== */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  padding: 10px 14px 8px;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+}
+
+.topbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.topbar h1 { font-size: 17px; }
+
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 13px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.meter-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.meter-bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: var(--ok);
+  transition: width .35s ease, background-color .35s ease;
+}
+
+.meter-bar span.mid  { background: var(--warn); }
+.meter-bar span.high { background: var(--danger); }
+
+.meter-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+#filter {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 16px;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+#filter:focus { border-color: var(--accent); }
+
+.chips { display: flex; gap: 5px; }
+
+.chip {
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.chip.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+main {
+  padding: 10px 12px calc(26px + var(--safe-b));
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.hint, .empty {
+  margin: 2px 4px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.empty { text-align: center; padding: 26px 0; }
+
+.list { display: flex; flex-direction: column; gap: 7px; }
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name stats" "sub stats";
+  align-items: center;
+  gap: 0 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+  transition: transform .08s ease, opacity .15s ease;
+}
+
+.row:active { transform: scale(.985); }
+
+.row.is-locked { opacity: .62; }
+
+.row .nm {
+  grid-area: name;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row .sub {
+  grid-area: sub;
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row .stats {
+  grid-area: stats;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.row .stats b { font-weight: 650; font-size: 13px; }
+
+.row .stats i {
+  font-style: normal;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.row .stats i.busy { color: var(--warn); }
+.row .stats i.hot  { color: var(--danger); }
+
+.tag {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+
+.tag.win { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.tag.sys { background: color-mix(in srgb, var(--warn) 20%, transparent);   color: var(--warn); }
+
+/* Fallback for engines without color-mix. */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .tag.win { color: var(--accent); }
+  .tag.sys { color: var(--warn); }
+}
+
+/* ================================================================== */
+/* Bottom sheet                                                       */
+/* ================================================================== */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, .45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: fade .16s ease;
+}
+
+.sheet[hidden] { display: none; }
+
+.sheet-panel {
+  width: 100%;
+  max-width: 480px;
+  background: var(--surface);
+  border-radius: 18px 18px 0 0;
+  padding: 20px 18px calc(18px + var(--safe-b));
+  box-shadow: var(--shadow);
+  animation: rise .2s cubic-bezier(.2, .8, .3, 1);
+}
+
+@keyframes fade { from { opacity: 0; } }
+@keyframes rise { from { transform: translateY(100%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet, .sheet-panel, .toast { animation: none; }
+  .row { transition: none; }
+}
+
+.sheet-panel h2 {
+  font-size: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-sub {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-stats {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 0;
+}
+
+.sheet-stats > div {
+  flex: 1;
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 9px 6px;
+  text-align: center;
+}
+
+.sheet-stats dt {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+
+.sheet-stats dd {
+  margin: 3px 0 0;
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.warn {
+  margin: 14px 0 0;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+  font-size: 12.5px;
+}
+
+.sheet-actions {
+  display: flex;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.sheet-actions button {
+  flex: 1;
+  border-radius: 11px;
+  padding: 13px;
+  font-size: 15px;
+  font-weight: 650;
+  border: 1px solid var(--line);
+}
+
+.sheet-actions .ghost { background: var(--surface-2); color: var(--text); }
+
+.sheet-actions .danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.sheet-actions button:disabled { opacity: .5; }
+
+/* ================================================================== */
+/* Toast                                                              */
+/* ================================================================== */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(26px + var(--safe-b));
+  transform: translateX(-50%);
+  z-index: 40;
+  max-width: 82vw;
+  background: var(--text);
+  color: var(--bg);
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-size: 13.5px;
+  font-weight: 550;
+  box-shadow: var(--shadow);
+  animation: fade .16s ease;
+}
+
+.toast[hidden] { display: none; }
+
+.toast.bad { background: var(--danger); color: #fff; }
+
+/* Connection lost banner is just the toast pinned to the top. */
+.toast.sticky {
+  bottom: auto;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+}

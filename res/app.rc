@@ -1,0 +1,8 @@
+#include "resource.h"
+
+IDI_APPICON ICON DISCARDABLE "app.ico"
+
+IDR_INDEX_HTML RCDATA "..\\web\\index.html"
+IDR_LOGIN_HTML RCDATA "..\\web\\login.html"
+IDR_APP_JS     RCDATA "..\\web\\app.js"
+IDR_APP_CSS    RCDATA "..\\web\\app.css"
