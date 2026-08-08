@@ -10,6 +10,7 @@
 #include "common.h"
 
 #define LTM_PASSWORD_MAX 64
+#define LTM_BINDIP_MAX   64
 #define LTM_DEFAULT_PORT 5555
 
 typedef enum ltm_lang_id {
@@ -22,6 +23,7 @@ typedef enum ltm_lang_id {
 typedef struct ltm_config {
     WCHAR       password[LTM_PASSWORD_MAX];
     int         port;
+    WCHAR       bind_ip[LTM_BINDIP_MAX]; /* empty = listen on all interfaces (INADDR_ANY) */
     ltm_lang_id lang;
     BOOL        autostart;   /* mirrors the HKCU Run registry value */
     BOOL        start_hidden; /* launch minimised to tray */

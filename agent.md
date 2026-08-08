@@ -127,7 +127,11 @@ fallback) into a reused growable `g_sysbuf`; visible-window captions via
 
 **Config** is a tiny UTF-8 INI (`settings.ini`) next to the exe, or in
 `%APPDATA%\LanTaskmgr\` when the exe is read-only. Keys: `Port`, `Password`,
-`Language`, `AutoStart`, `StartHidden`.
+`Language`, `BindIP`, `AutoStart`, `StartHidden`. `BindIP` is an optional
+dotted-quad IPv4 literal; empty (default) listens on all interfaces
+(`INADDR_ANY`), otherwise the socket binds only to that interface so the web UI
+stays off public networks. Parsed with `InetPtonW`; an invalid value fails
+`ltm_http_start`.
 
 **Logging** (`src/logging.c`) is thread-safe, append-only, rotates at 1 MB
 (`lantaskmgr.log`).

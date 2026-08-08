@@ -136,12 +136,25 @@ refused by the server rather than merely warned about.
 Port=5555
 Password=        ; leave empty to disable the login prompt
 Language=CN        ; EN | CN | TW
+BindIP=            ; empty = listen on all interfaces; set a LAN IPv4 to stay off public networks
 AutoStart=0
 StartHidden=0
 ```
 
 `lantaskmgr.log` records service start/stop, new devices and kill attempts, and
 rotates at 1 MB.
+
+### Binding to a specific IP
+
+By default the server listens on `0.0.0.0` — every network interface, including
+any public/external one. If the PC also has an internet-facing adapter (or a
+risky router setup), that exposes the web UI to the wider network.
+
+Set `BindIP` in `settings.ini` to the LAN address you want to serve from, e.g.
+`BindIP=192.168.1.50`. The socket then binds only to that interface, so the
+manager is unreachable from any other network. Leave `BindIP` empty to keep the
+all-interfaces default. The value must be a dotted-quad IPv4 literal; an invalid
+entry is rejected at start-up with a "Cannot bind to port" error and the reason.
 
 ## Security, honestly
 

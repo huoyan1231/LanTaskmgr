@@ -604,13 +604,14 @@ static BOOL create_wakeup_socket(void)
     return TRUE;
 }
 
-BOOL ltm_http_start(int port)
+BOOL ltm_http_start(int port, const WCHAR *bind_ip)
 {
     WSADATA            wsa;
     struct sockaddr_in sa;
     u_long             nb = 1;
     BOOL               exclusive = TRUE;
     int                i;
+    BOOL               use_any = TRUE;
 
     if (ltm_http_is_running()) {
         return TRUE;
@@ -641,8 +642,25 @@ BOOL ltm_http_start(int port)
 
     ZeroMemory(&sa, sizeof(sa));
     sa.sin_family = AF_INET;
-    sa.sin_addr.s_addr = htonl(INADDR_ANY);
     sa.sin_port = htons((unsigned short)port);
+
+    if (bind_ip != NULL && bind_ip[0] != L'\0') {
+        /* Parse a dotted-quad IPv4 literal. This is the only accepted form:
+         * it both restricts the server to a single LAN interface and prevents
+         * it from binding to a public-facing address the user did not intend. */
+        IN_ADDR addr;
+        if (InetPtonW(AF_INET, bind_ip, &addr) != 1) {
+            _snwprintf_s(g_last_error, LTM_COUNTOF(g_last_error), _TRUNCATE,
+                         L"invalid BindIP address: %s", bind_ip);
+            goto fail;
+        }
+        sa.sin_addr = addr;
+        use_any = FALSE;
+    }
+
+    if (use_any) {
+        sa.sin_addr.s_addr = htonl(INADDR_ANY);
+    }
 
     if (bind(g_listener, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
         set_error_from_wsa(L"bind", WSAGetLastError());
@@ -669,7 +687,11 @@ BOOL ltm_http_start(int port)
         goto fail;
     }
 
-    ltm_log(L"server listening on port %d", port);
+    if (use_any) {
+        ltm_log(L"server listening on 0.0.0.0:%d (all interfaces)", port);
+    } else {
+        ltm_log(L"server listening on %s:%d", bind_ip, port);
+    }
     return TRUE;
 
 fail:

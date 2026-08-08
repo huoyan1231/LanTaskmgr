@@ -54,6 +54,8 @@ typedef enum ltm_str_id {
     STR_LBL_PORT,
     STR_LBL_PASSWORD,
     STR_LBL_LANG,
+    STR_LBL_BINDIP,
+    STR_BINDIP_HINT,
     STR_LBL_STATUS,
     STR_LBL_ADDRESSES,
     STR_BTN_START,

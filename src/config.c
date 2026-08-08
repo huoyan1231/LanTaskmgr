@@ -168,6 +168,10 @@ BOOL ltm_config_load(void)
             }
         } else if (_wcsicmp(key, L"Language") == 0) {
             g_cfg.lang = ltm_lang_from_code(val);
+        } else if (_wcsicmp(key, L"BindIP") == 0) {
+            if (val[0] != L'\0') {
+                ltm_strlcpy_w(g_cfg.bind_ip, LTM_BINDIP_MAX, val);
+            }
         } else if (_wcsicmp(key, L"AutoStart") == 0) {
             g_cfg.autostart = (_wtoi(val) != 0);
         } else if (_wcsicmp(key, L"StartHidden") == 0) {
@@ -201,10 +205,12 @@ BOOL ltm_config_save(BOOL *ok_out)
                      L"Port=%d\r\n"
                      L"Password=%s\r\n"
                      L"Language=%s\r\n"
+                     L"BindIP=%s\r\n"
                      L"AutoStart=%d\r\n"
                      L"StartHidden=%d\r\n"
                      L"AutoStartSvc=%d\r\n",
                      g_cfg.port, g_cfg.password, ltm_lang_code(g_cfg.lang),
+                     g_cfg.bind_ip,
                      g_cfg.autostart ? 1 : 0, g_cfg.start_hidden ? 1 : 0,
                      g_cfg.auto_start_svc ? 1 : 0);
     if (n <= 0) {

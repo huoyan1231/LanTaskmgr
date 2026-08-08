@@ -54,6 +54,7 @@ enum {
     IDC_PORT        = 100,
     IDC_PASSWORD,
     IDC_LANG,
+    IDC_BINDIP,
     IDC_AUTOSTART,
     IDC_START,
     IDC_STOP,
@@ -110,15 +111,19 @@ static int get_int(HWND dlg, int id)
 static void server_start(HWND dlg)
 {
     int port = get_int(dlg, IDC_PORT);
+    WCHAR bindip[LTM_BINDIP_MAX];
     if (port < 1 || port > 65535) {
         MessageBoxW(dlg, ltm_str(STR_ERR_PORT), LTM_APP_NAME, MB_ICONWARNING);
         return;
     }
 
+    GetDlgItemTextW(dlg, IDC_BINDIP, bindip, _countof(bindip));
+    /* An empty field means "listen on all interfaces" (INADDR_ANY). */
+
     ltm_proc_init();
     ltm_api_reset();
 
-    if (ltm_http_start((unsigned short)port)) {
+    if (ltm_http_start((unsigned short)port, bindip[0] ? bindip : NULL)) {
         g_server_running = TRUE;
         set_text(dlg, IDC_STATUS, ltm_str(STR_STATUS_RUNNING));
         enable_ctrl(dlg, IDC_START, FALSE);
@@ -166,13 +171,23 @@ static void refresh_addresses(HWND dlg)
     SendMessageW(lb, LB_RESETCONTENT, 0, 0);
     if (!g_server_running) { return; }
 
-    n = ltm_net_list_addresses(addrs, 16);
     port = get_int(dlg, IDC_PORT);
 
+    /* When bound to a specific interface, only that address is reachable,
+     * so don't enumerate every LAN address. */
+    if (g_cfg.bind_ip[0] != L'\0') {
+        WCHAR entry[128];
+        _snwprintf_s(entry, _countof(entry), _TRUNCATE,
+                     L"http://%s:%d", g_cfg.bind_ip, port);
+        SendMessageW(lb, LB_ADDSTRING, 0, (LPARAM)entry);
+        return;
+    }
+
+    n = ltm_net_list_addresses(addrs, 16);
     for (i = 0; i < n; i++) {
         WCHAR entry[128];
         _snwprintf_s(entry, _countof(entry), _TRUNCATE,
-                     L"http:%s:%d%s", addrs[i].ip, port,
+                     L"http://%s:%d%s", addrs[i].ip, port,
                      addrs[i].has_gateway ? L"  \u2605" : L"");
         SendMessageW(lb, LB_ADDSTRING, 0, (LPARAM)entry);
     }
@@ -345,6 +360,9 @@ static void populate_dialog(HWND dlg)
     /* Password (masked) */
     SetDlgItemTextW(dlg, IDC_PASSWORD, g_cfg.password);
 
+    /* Bind IP (empty = all interfaces) */
+    SetDlgItemTextW(dlg, IDC_BINDIP, g_cfg.bind_ip);
+
     /* Language combo */
     {
         HWND cb = GetDlgItem(dlg, IDC_LANG);
@@ -387,6 +405,10 @@ static void save_from_dialog(HWND dlg)
      * without authentication on the LAN). */
     GetDlgItemTextW(dlg, IDC_PASSWORD, buf, _countof(buf));
     wcsncpy_s(g_cfg.password, _countof(g_cfg.password), buf, _TRUNCATE);
+
+    /* Bind IP (may be empty: an empty value means listen on all interfaces). */
+    GetDlgItemTextW(dlg, IDC_BINDIP, buf, _countof(buf));
+    wcsncpy_s(g_cfg.bind_ip, _countof(g_cfg.bind_ip), buf, _TRUNCATE);
 
     /* Language */
     {
@@ -610,6 +632,17 @@ static HWND create_main_dialog(HINSTANCE hinst)
     make_label(dlg, -1, ltm_str(STR_LBL_LANG), MARGIN, y, lw, eh);
     make_combo(dlg, IDC_LANG, MARGIN + lw + GAP, y, ew, eh + 80);
     y += eh + GAP + 4;
+
+    /* -- Row 2b: Bind IP --------------------------------------------- */
+    make_label(dlg, -1, ltm_str(STR_LBL_BINDIP), MARGIN, y, lw, eh);
+    make_edit(dlg, IDC_BINDIP, MARGIN + lw + GAP, y, ew * 2 + GAP, eh);
+    y += eh + 2;
+    {
+        HWND hint = make_label(dlg, -1, ltm_str(STR_BINDIP_HINT),
+                               MARGIN + lw + GAP, y, DLG_W - MARGIN * 2 - lw - GAP, eh * 2);
+        (void)hint;
+    }
+    y += eh * 2 + GAP + 4;
 
     /* -- Row 3: Checkboxes ------------------------------------------- */
     make_checkbox(dlg, IDC_AUTOSTART, ltm_str(STR_CHK_AUTO),

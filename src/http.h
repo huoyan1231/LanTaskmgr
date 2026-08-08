@@ -62,8 +62,10 @@ void ltm_http_set_text(ltm_http_response *res, int status, const char *content_t
 void ltm_api_handle(const ltm_http_request *req, ltm_http_response *res);
 
 /* Server lifecycle. ltm_http_start() binds, listens and spawns the network
- * thread; it returns FALSE and fills the last-error string on failure. */
-BOOL         ltm_http_start(int port);
+ * thread; it returns FALSE and fills the last-error string on failure.
+ * `bind_ip` may be NULL or empty to listen on all interfaces (INADDR_ANY);
+ * otherwise it is an IPv4 literal (e.g. "192.168.1.50") the socket binds to. */
+BOOL         ltm_http_start(int port, const WCHAR *bind_ip);
 void         ltm_http_stop(void);
 BOOL         ltm_http_is_running(void);
 const WCHAR *ltm_http_last_error(void);
