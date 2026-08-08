@@ -1,136 +1,154 @@
-[English](README.md) | [简体中文](README.zh-CN.md)
+[简体中文](README.md) | [English](README.en.md)
+
+[Rust版本](https://github.com/huoyan1231/LanTaskmgr_rs)
+
+我很喜欢windows，但是它经常卡死，任务管理器都打不开
+
+尤其是曾几何时，我的电脑配置高达i5-337u+GT720m+4g
+
+卡顿更是家常便饭
+
+后来
+
+我看到了一个程序——RunTaskManagerOnYourPhone
+
+它可以让你的手机结束进程
+
+非常好用
+
+拯救我的电脑无数次
+
+后来我发现这个程序cpu占用有点问题，总是无缘无故占了20-30%
+
+然后我就没用他了
+
+后来设备也更新了，再也没用过这个软件
+
+但是，Windows又开始卡死了，我完全拿它没办法
+
+而Linux无法满足我的需求
+
+我又想起了曾经拯救我的程序
+
+但是现在连Github Repo都删了，我没法再下载到了
+
+后来，我在我的旧电脑中找到了这个程序，它仍然可用
+
+但是我想起了cpu占用的问题
+
+于是我重新写了一个
+
+这是使用C编写的版本
+
+我还有第二套方案，第二套使用Rust+Tarui
+
+使用起来没有区别，除了C版本UI比较简陋
+
+但是你在手机上打开的网页是一样的
 
 # LanTaskmgr
 
-Kill runaway processes on your PC from your phone's browser.
+用手机浏览器结束电脑上失控的进程。
 
-When something on Windows pins the CPU and the desktop stops repainting, the
-task manager is exactly the thing you can no longer open. LanTaskmgr keeps a
-tiny HTTP server running on your LAN so you can pull up a process list on your
-phone and terminate the offender without touching the frozen machine.
+当 Windows 把 CPU 占满、桌面停止重绘时，任务管理器恰恰是你打不开的那个东西。LanTaskmgr 在局域网内运行一个极小的 HTTP 服务，让你在手机上拉出进程列表，无需触碰那台已经卡死的机器就能终止罪魁祸首。
 
-This is a functional rewrite of
+这是对 Gordon Walkedby 所写
 [Run Task Manager On Your Phone](https://github.com/gordonwalkedby/RunTaskManagerOnYourPhone)
-by Gordon Walkedby, reimplemented in C against the raw Win32 API.
+的功能重写，使用纯 C 直接基于 Win32 API 实现。
 
-## Why C
+## 为什么用 C
 
-The original is VB.NET/WinForms and drags in the whole .NET Framework plus
-Mono's `HttpListener` and `Newtonsoft.Json` — roughly 2.5 MB of
-binaries and a 30-60 MB working set for a program whose entire job is to sit
-idle until the day you need it.
+原版是 VB.NET/WinForms，会拖入整个 .NET Framework，外加 Mono 的
+`HttpListener` 与 `Newtonsoft.Json` —— 对于一个啥也不干、只是待机到你需要的那一天才醒来的程序来说，
+光二进制就有约 2.5 MB，工作集 30–60 MB。
 
-Since this tool is meant to be resident 24/7 and, crucially, to still respond
-when the machine is already out of resources, every byte of its footprint works
-against its own purpose. So it is written the other way round:
+而这个工具注定要 7×24 小时常驻，关键在于：即便机器已经资源耗尽，它仍要能响应。所以它的每一字节体积都在和自己作对。因此我们反过来写：
 
-|                    | original                                      | LanTaskmgr              |
+|                    | 原版                                          | LanTaskmgr              |
 | ------------------ | --------------------------------------------- | ----------------------- |
-| language           | VB.NET                                        | C11                     |
-| runtime dependency | .NET Framework                                | none                    |
-| files to ship      | 10 (`.exe` + 5 DLLs + web folder + languages) | 1 (`LanTaskmgr.exe`)    |
-| JSON               | Newtonsoft.Json                               | hand-written serialiser |
+| 语言               | VB.NET                                        | C11                     |
+| 运行时依赖         | .NET Framework                                | 无                      |
+| 需分发的文件       | 10 个（`.exe` + 5 个 DLL + web 文件夹 + 语言包） | 1 个（`LanTaskmgr.exe`）|
+| JSON               | Newtonsoft.Json                               | 手写序列化器            |
 | HTTP               | Mono.Net.HttpListener                         | Winsock + `select()`    |
-| threads            | thread per request                            | 1 UI + 1 network        |
+| 线程               | 每请求一线程                                  | 1 个 UI + 1 个网络      |
 
-Everything the browser loads (HTML, CSS, JS) is embedded in the executable as
-`RCDATA` and served straight from the mapped PE image — no file I/O and no heap
-copy per request.
+浏览器加载的一切（HTML、CSS、JS）都以 `RCDATA` 形式嵌入可执行文件，直接由映射后的 PE 映像提供 —— 没有文件 I/O，也没有每次请求时的堆复制。
 
-## Building
+## 构建
 
-Needs MSVC (any Visual Studio edition or the standalone Build Tools with the
-"Desktop development with C++" workload). No other dependency, no package
-manager, no CMake.
+需要 MSVC（任意 Visual Studio 版本，或安装了“使用 C++ 的桌面开发”工作负载的独立 Build Tools）。无其他依赖，无包管理器，无 CMake。
 
 ```bat
-build.bat            :: release, x64
+build.bat            :: 发布版，x64
 build.bat debug      :: /Od /Zi
 build.bat clean
 ```
 
-The result is `build\LanTaskmgr.exe`, statically linked against the CRT so it
-runs on a bare Windows install.
+产物为 `build\LanTaskmgr.exe`，静态链接 CRT，因此可在干净的 Windows 安装上直接运行。
 
-## Usage
+## 使用
 
-Run the executable. The window shows the LAN addresses this PC is reachable on
-and the settings.
+运行可执行文件。窗口会显示本机在局域网内可达的地址以及设置项。
 
-1. The server starts with an empty password (no login prompt) by default; set
-   your own in the dialog if you want LAN access protected.
-2. On your phone (same Wi-Fi/LAN), open one of those LAN addresses in a browser.
-3. Log in, tap a process, confirm.
+1. 默认密码为空（无登录提示）；若想保护局域网访问，可在对话框中自行设置密码。
+2. 在手机上（同一 Wi-Fi/局域网），用浏览器打开其中一个局域网地址。
+3. 登录，点选进程，确认。
 
-Tick **Start with Windows** so it is already listening the next time something
-locks up. Closing the window hides the program to the tray; use the tray menu
-to quit for real.
+勾选 **开机自动启动**，这样下次卡死时它已经在监听了。关闭窗口只是把程序收进托盘；通过托盘菜单才能真正退出。
 
-### What the phone sees
+### 手机上看到的内容
 
-Processes are grouped by image name and colour coded:
+进程按映像名分组，并以颜色区分：
 
-* **blue** — has a visible window (this is usually what you came to kill)
-* **grey** — a normal background process
-* **red** — a session-0 / system process
+* **蓝色** —— 拥有可见窗口（这通常就是你想要结束的那个）
+* **灰色** —— 普通后台进程
+* **红色** —— session-0 / 系统进程
 
-Each row shows the private working set and the CPU share since the previous
-poll. The list refreshes every two seconds and can be sorted by memory, CPU or
-name, or filtered by typing.
+每一行显示私有工作集与自上次轮询以来的 CPU 占比。列表每两秒刷新一次，可按内存、CPU 或名称排序，也可输入文字筛选。
 
-A short list of processes that instantly bugcheck or reboot Windows when
-terminated (`csrss`, `wininit`, `smss`, `services`, `lsass`, `winlogon`, …) is
-refused by the server rather than merely warned about.
+一小批进程一旦被终止会让 Windows 立即蓝屏或重启（`csrss`、`wininit`、`smss`、`services`、`lsass`、`winlogon` …），服务器会直接拒绝，而不只是给出警告。
 
-## Configuration
+## 配置
 
-`settings.ini`, written next to the executable (or in
-`%APPDATA%\LanTaskmgr\` when the executable lives somewhere read-only):
+`settings.ini` 写在可执行文件旁边（当可执行文件位于只读位置时，则写入
+`%APPDATA%\LanTaskmgr\`）：
 
 ```ini
 [LanTaskmgr]
 Port=5555
-Password=        ; leave empty to disable the login prompt
+Password=        ; 留空则关闭登录提示
 Language=CN        ; EN | CN | TW
-BindIP=            ; empty = listen on all interfaces; set a LAN IPv4 to stay off public networks
+BindIP=            ; 留空 = 监听所有网卡；填写局域网 IPv4 可避免 Web 界面暴露在公网
 AutoStart=0
 StartHidden=0
 ```
 
-`lantaskmgr.log` records service start/stop, new devices and kill attempts, and
-rotates at 1 MB.
+`lantaskmgr.log` 记录服务启停、新设备接入与结束进程的尝试，并在达到 1 MB 时滚动。
 
-### Binding to a specific IP
+### 绑定到指定 IP
 
-By default the server listens on `0.0.0.0` — every network interface, including
-any public/external one. If the PC also has an internet-facing adapter (or a
-risky router setup), that exposes the web UI to the wider network.
+默认情况下服务器监听 `0.0.0.0` —— 即每一块网卡，包括任何公网/外部网卡。如果这台电脑还有面向互联网的适配器（或路由器配置有风险），就会把 Web 界面暴露给更广泛的网络。
 
-Set `BindIP` in `settings.ini` to the LAN address you want to serve from, e.g.
-`BindIP=192.168.1.50`. The socket then binds only to that interface, so the
-manager is unreachable from any other network. Leave `BindIP` empty to keep the
-all-interfaces default. The value must be a dotted-quad IPv4 literal; an invalid
-entry is rejected at start-up with a "Cannot bind to port" error and the reason.
+在 `settings.ini` 中把 `BindIP` 设为你想要提供服务的局域网地址，例如
+`BindIP=192.168.1.50`。这样套接字只绑定到该网卡，管理器从任何其他网络都不可达。
+若 `BindIP` 留空，则保持监听所有网卡的默认行为。该值必须是点分十进制 IPv4 字面量；
+无效值会在启动时拒绝，并提示“无法绑定到端口”以及具体原因。
 
-## Security, honestly
+## 关于安全，实话实说
 
-This is a plain-HTTP LAN tool that terminates arbitrary processes. Treat it
-accordingly:
+这是一个纯 HTTP 的局域网工具，能终止任意进程。请据此对待：
 
-* Traffic is **not** encrypted. Anyone sharing the network can see the session
-  cookie, so do not run it on café or hotel Wi-Fi.
-* The password is stored in clear text in `settings.ini`, and is checked in
-  constant time against a random session token issued on login.
-* Five failed logins block that IP until the service is restarted.
-* Never forward the port through your router.
+* 流量**未加密**。任何共享该网络的人都能看到会话 cookie，因此不要在咖啡厅或酒店 Wi-Fi 上运行。
+* 密码以明文存储在 `settings.ini` 中，并在登录时以常量时间比对登录时签发的随机会话令牌。
+* 同一个 IP 登录失败五次后会被封锁，直到服务重启。
+* 切勿通过路由器转发该端口。
 
-## Differences from the original
+## 与原版的区别
 
-* Added: memory and CPU per process, sorting/filtering, dark mode, minimise to
-  tray, empty first-run password (no prompt by default).
-* Dropped: the built-in update check (there is no update server for this
-  rewrite) and the external `Languages\*.xml` folder, which is now compiled in.
+* 新增：每个进程的内存与 CPU、排序/筛选、深色模式、最小化到托盘、首次运行空密码（默认无提示）。
+* 移除：内置更新检查（此重写版没有更新服务器）以及外部的 `Languages\*.xml` 文件夹（现已编译进程序）。
 
-## Licence
+## 许可协议
 
-MIT. See [LICENSE](LICENSE).
+MIT。见 [LICENSE](LICENSE)。
