@@ -48,7 +48,8 @@
       killedGone: 'Already gone',
       killedDenied: 'Access denied',
       offline: 'Connection lost \u2014 retrying\u2026',
-      noTitle: 'no title'
+      noTitle: 'no title',
+      showInstances: 'Instances ({n})'
     },
     CN: {
       title: '局域网任务管理器',
@@ -85,7 +86,8 @@
       killedGone: '进程已不存在',
       killedDenied: '权限不足',
       offline: '连接已断开，正在重试\u2026',
-      noTitle: '无标题'
+      noTitle: '无标题',
+      showInstances: '各实例（{n}）'
     },
     TW: {
       title: '區域網路工作管理員',
@@ -122,7 +124,8 @@
       killedGone: '處理程序已不存在',
       killedDenied: '權限不足',
       offline: '連線中斷，正在重試\u2026',
-      noTitle: '無標題'
+      noTitle: '無標題',
+      showInstances: '各執行個體（{n}）'
     }
   };
 
@@ -517,12 +520,15 @@
     var sheetCount = document.getElementById('sheetCount');
     var sheetWarn = document.getElementById('sheetWarn');
     var sheetPins = document.getElementById('sheetPins');
+    var sheetPinsToggle = document.getElementById('sheetPinsToggle');
+    var sheetPinsToggleText = document.getElementById('sheetPinsToggleText');
     var sheetKill = document.getElementById('sheetKill');
     var sheetCancel = document.getElementById('sheetCancel');
+    var pinsOpen = false;
 
     function refreshSheet() {
       var d = find(selected);
-      var i, pin, li, label, pidSpan, btn;
+      var i, pin, li, label, pidSpan, btn, n;
 
       if (!d) { closeSheet(); return; }
       sheetName.textContent = d.n;
@@ -532,9 +538,19 @@
       sheetCpu.textContent = pct(d.p);
       sheetCount.textContent = String(d.i);
 
+      /* The PID list is collapsed by default: an aggregated card stays compact
+       * until the user asks to see the individual instances behind it. */
+      n = d.pins ? d.pins.length : 0;
+      sheetPinsToggle.hidden = n === 0;
+      sheetPinsToggleText.textContent = t('showInstances', { n: n });
+      sheetPinsToggle.setAttribute('aria-expanded', pinsOpen ? 'true' : 'false');
+      if (pinsOpen) { sheetPinsToggle.classList.add('is-open'); }
+      else { sheetPinsToggle.classList.remove('is-open'); }
+      sheetPins.hidden = !pinsOpen || n === 0;
+
       /* Build the per-instance PID list: each row ends exactly one process. */
       sheetPins.textContent = '';
-      for (i = 0; i < (d.pins ? d.pins.length : 0); i++) {
+      for (i = 0; pinsOpen && i < n; i++) {
         pin = d.pins[i];
         li = document.createElement('li');
         li.className = 'pin';
@@ -553,11 +569,11 @@
         btn.type = 'button';
         btn.className = 'pin-kill';
         btn.textContent = t('endTask');
-        btn.onclick = (function (pid) {
+        btn.onclick = (function (pid, self) {
           return function () {
-            killOne(d, pid, btn);
+            killOne(d, pid, self);
           };
-        })(pin.p);
+        })(pin.p, btn);
         if (d.k) { btn.disabled = true; }
         li.appendChild(btn);
 
@@ -603,8 +619,14 @@
       });
     }
 
+    sheetPinsToggle.onclick = function () {
+      pinsOpen = !pinsOpen;
+      refreshSheet();
+    };
+
     function openSheet(d) {
       selected = d.n;
+      pinsOpen = false;   /* always start collapsed */
       sheetKill.textContent = t('endTask');
       refreshSheet();
       if (selected) { sheet.hidden = false; }

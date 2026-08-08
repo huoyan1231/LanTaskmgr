@@ -457,10 +457,43 @@ main {
   font-size: 12.5px;
 }
 
+/* Expand/collapse control for the per-instance PID list. */
+.pins-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin: 14px 0 0;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.pins-caret {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--text-dim);
+  transition: transform .15s ease;
+}
+
+.pins-toggle.is-open .pins-caret { transform: rotate(180deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pins-caret { transition: none; }
+}
+
 /* Per-instance PID list inside the sheet. */
 .pins {
   list-style: none;
-  margin: 14px 0 0;
+  margin: 8px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;

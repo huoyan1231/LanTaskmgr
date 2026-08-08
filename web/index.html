@@ -45,7 +45,12 @@
       <div><dt data-i18n="colCpu">CPU</dt><dd id="sheetCpu">&mdash;</dd></div>
       <div><dt data-i18n="colCount">Count</dt><dd id="sheetCount">&mdash;</dd></div>
     </dl>
-    <ul id="sheetPins" class="pins"></ul>
+    <button type="button" id="sheetPinsToggle" class="pins-toggle" aria-expanded="false"
+            aria-controls="sheetPins">
+      <span id="sheetPinsToggleText">&nbsp;</span>
+      <span class="pins-caret" aria-hidden="true"></span>
+    </button>
+    <ul id="sheetPins" class="pins" hidden></ul>
     <p id="sheetWarn" class="warn" hidden></p>
     <div class="sheet-actions">
       <button type="button" id="sheetCancel" class="ghost" data-i18n="cancel">Cancel</button>
