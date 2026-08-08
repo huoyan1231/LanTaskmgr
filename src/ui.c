@@ -45,8 +45,8 @@ static BOOL CALLBACK set_child_font(HWND child, LPARAM font);
 #define LTM_TIMER_REFRESH  1
 #define LTM_REFRESH_MS     3000
 
-#define DLG_W    420
-#define DLG_H    375
+#define DLG_W    460
+#define DLG_H    470
 #define MARGIN   14
 #define GAP      8
 
