@@ -100,6 +100,11 @@ static int      g_prev_cap;
 static ULONG64  g_prev_time100ns;
 static DWORD    g_cpu_count = 1;
 
+/* ~132 KB window-title hash table, kept module-level so the steady state
+ * performs no allocation and the snapshot stack stays small. */
+struct enum_ctx; /* defined below */
+static struct enum_ctx *g_wins;
+
 /* Terminating any of these takes the whole machine down immediately. The
  * original merely warned; refusing outright costs nothing and the user has no
  * legitimate reason to reach for them from a phone. */
@@ -156,6 +161,8 @@ void ltm_proc_shutdown(void)
     ltm_free(g_prev);
     g_prev = NULL;
     g_prev_count = g_prev_cap = 0;
+    ltm_free(g_wins);
+    g_wins = NULL;
     DeleteCriticalSection(&g_lock);
 }
 
@@ -163,17 +170,33 @@ void ltm_proc_shutdown(void)
 /* Visible window titles                                               */
 /* ------------------------------------------------------------------ */
 
+/* pid -> caption, as an open-addressing hash table.
+ *
+ * Both the insert-time duplicate check and the per-process lookup used to be
+ * linear scans, which made the whole snapshot quadratic. Linear probing keeps
+ * it O(1) per operation with no allocation per entry. Slot 0 pids are unused
+ * (the idle process is filtered out), so pid == 0 marks an empty slot. */
+#define WIN_TABLE_BITS 9                       /* 512 slots */
+#define WIN_TABLE_SIZE (1u << WIN_TABLE_BITS)
+#define WIN_TABLE_MASK (WIN_TABLE_SIZE - 1u)
+
 typedef struct enum_ctx {
-    win_title *items;
-    int        count;
-    int        cap;
+    win_title slots[WIN_TABLE_SIZE];
+    int       count;
 } enum_ctx;
+
+/* Knuth multiplicative hash: pids are handle-like and cluster on low bits,
+ * so the raw value makes a poor index. */
+static unsigned win_slot(DWORD pid)
+{
+    return (unsigned)((pid * 2654435761u) >> (32 - WIN_TABLE_BITS)) & WIN_TABLE_MASK;
+}
 
 static BOOL CALLBACK enum_windows_cb(HWND hwnd, LPARAM lparam)
 {
     enum_ctx *ctx = (enum_ctx *)lparam;
     DWORD     pid = 0;
-    int       i;
+    unsigned  slot;
 
     if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER) != NULL) {
         return TRUE;
@@ -182,38 +205,40 @@ static BOOL CALLBACK enum_windows_cb(HWND hwnd, LPARAM lparam)
     if (pid == 0) {
         return TRUE;
     }
-    for (i = 0; i < ctx->count; ++i) {
-        if (ctx->items[i].pid == pid) {
+    /* Leave one slot free so a lookup miss always terminates on an empty slot. */
+    if ((unsigned)ctx->count >= WIN_TABLE_SIZE - 1u) {
+        return FALSE;
+    }
+
+    slot = win_slot(pid);
+    while (ctx->slots[slot].pid != 0) {
+        if (ctx->slots[slot].pid == pid) {
             return TRUE; /* first caption wins */
         }
+        slot = (slot + 1u) & WIN_TABLE_MASK;
     }
-    if (ctx->count == ctx->cap) {
-        int        ncap = (ctx->cap == 0) ? 32 : ctx->cap * 2;
-        win_title *ni = (win_title *)ltm_realloc(ctx->items, (size_t)ncap * sizeof(win_title));
-        if (ni == NULL) {
-            return FALSE;
-        }
-        ctx->items = ni;
-        ctx->cap = ncap;
+
+    /* Read the caption straight into the slot; this also lets us skip windows
+     * with no title in one call instead of a separate length round-trip. */
+    if (GetWindowTextW(hwnd, ctx->slots[slot].title, LTM_PROC_TITLE_MAX) <= 0) {
+        ctx->slots[slot].title[0] = L'\0';
+        return TRUE; /* no caption: leave the slot empty */
     }
-    ctx->items[ctx->count].pid = pid;
-    /* Get the caption directly; this also lets us skip windows with no title
-     * in one call instead of a separate GetWindowTextLengthW round-trip. */
-    if (GetWindowTextW(hwnd, ctx->items[ctx->count].title, LTM_PROC_TITLE_MAX) <= 0) {
-        return TRUE; /* no caption: skip */
-    }
-    ctx->items[ctx->count].title[LTM_PROC_TITLE_MAX - 1] = L'\0';
+    ctx->slots[slot].title[LTM_PROC_TITLE_MAX - 1] = L'\0';
+    ctx->slots[slot].pid = pid;
     ctx->count++;
     return TRUE;
 }
 
 static const WCHAR *find_title(const enum_ctx *ctx, DWORD pid)
 {
-    int i;
-    for (i = 0; i < ctx->count; ++i) {
-        if (ctx->items[i].pid == pid) {
-            return ctx->items[i].title;
+    unsigned slot = win_slot(pid);
+
+    while (ctx->slots[slot].pid != 0) {
+        if (ctx->slots[slot].pid == pid) {
+            return ctx->slots[slot].title;
         }
+        slot = (slot + 1u) & WIN_TABLE_MASK;
     }
     return NULL;
 }
@@ -456,7 +481,7 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
 {
     raw_proc       *raw = NULL;
     int             raw_count = 0;
-    enum_ctx        wins;
+    enum_ctx       *wins;
     ltm_proc_group *groups = NULL;
     ltm_proc_inst  *insts = NULL;
     WCHAR          *titles = NULL;
@@ -472,15 +497,23 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
         return FALSE;
     }
 
-    ZeroMemory(&wins, sizeof(wins));
-    EnumWindows(enum_windows_cb, (LPARAM)&wins);
+    /* The window table is ~132 KB: too big for the stack, and reusing one
+     * module-level buffer keeps the steady state allocation-free. */
+    if (g_wins == NULL) {
+        g_wins = (enum_ctx *)ltm_alloc(sizeof(enum_ctx));
+        if (g_wins == NULL) {
+            return FALSE;
+        }
+    }
+    wins = g_wins;
+    ZeroMemory(wins, sizeof(*wins));
+    EnumWindows(enum_windows_cb, (LPARAM)wins);
 
     EnterCriticalSection(&g_lock);
 
     if (!sample_native(&raw, &raw_count)) {
         if (!sample_toolhelp(&raw, &raw_count)) {
             LeaveCriticalSection(&g_lock);
-            ltm_free(wins.items);
             return FALSE;
         }
     }
@@ -501,7 +534,6 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
         ltm_free(insts);
         ltm_free(raw);
         LeaveCriticalSection(&g_lock);
-        ltm_free(wins.items);
         return FALSE;
     }
 
@@ -515,7 +547,6 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
         ltm_free(insts);
         ltm_free(raw);
         LeaveCriticalSection(&g_lock);
-        ltm_free(wins.items);
         return FALSE;
     }
 
@@ -545,7 +576,7 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
 
         /* One lookup per process, reused for both the per-instance caption and
          * the group classification below. */
-        title = g->is_protected ? NULL : find_title(&wins, rp->pid);
+        title = g->is_protected ? NULL : find_title(wins, rp->pid);
 
         if (g->inst_count < LTM_PROC_PID_BATCH) {
             ltm_proc_inst *inst = &insts[out->inst_count++];
@@ -610,7 +641,6 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
     LeaveCriticalSection(&g_lock);
 
     ltm_free(raw);
-    ltm_free(wins.items);
 
     /* Sorting groups is safe: the slices are index based, so moving a group
      * struct carries its (inst_first, inst_count) pair along with it. */
