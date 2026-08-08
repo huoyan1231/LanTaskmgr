@@ -383,6 +383,8 @@ BOOL ltm_config_load(void)
             g_cfg.start_hidden = (_wtoi(val) != 0);
         } else if (_wcsicmp(key, L"AutoStartSvc") == 0) {
             g_cfg.auto_start_svc = (_wtoi(val) != 0);
+        } else if (_wcsicmp(key, L"NoPwWarned") == 0) {
+            g_cfg.nopw_warned = (_wtoi(val) != 0);
         }
     }
 
@@ -429,11 +431,13 @@ BOOL ltm_config_save(BOOL *ok_out)
                      L"BindIP=%s\r\n"
                      L"AutoStart=%d\r\n"
                      L"StartHidden=%d\r\n"
-                     L"AutoStartSvc=%d\r\n",
+                     L"AutoStartSvc=%d\r\n"
+                     L"NoPwWarned=%d\r\n",
                      g_cfg.port, pw_b64, ltm_lang_code(g_cfg.lang),
                      g_cfg.bind_ip,
                      g_cfg.autostart ? 1 : 0, g_cfg.start_hidden ? 1 : 0,
-                     g_cfg.auto_start_svc ? 1 : 0);
+                     g_cfg.auto_start_svc ? 1 : 0,
+                     g_cfg.nopw_warned ? 1 : 0);
     if (n <= 0) {
         return FALSE;
     }

@@ -249,7 +249,10 @@ static void tray_create(void)
     g_nid.cbSize           = sizeof(NOTIFYICONDATAW);
     g_nid.hWnd             = g_hwnd;
     g_nid.uID              = 1;
-    g_nid.uFlags           = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_INFO;
+    /* No NIF_INFO here: that flag belongs to a balloon, and setting it on the
+     * initial add with an empty szInfo can swallow the first real notification.
+     * tray_notify() sets it per-call instead. */
+    g_nid.uFlags           = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     g_nid.uCallbackMessage = LTM_WM_TRAY;
     g_nid.hIcon            = LoadIconW(g_hinst, MAKEINTRESOURCEW(IDI_APPICON));
     wcscpy_s(g_nid.szTip, _countof(g_nid.szTip), LTM_APP_NAME);
@@ -260,6 +263,39 @@ static void tray_create(void)
 static void tray_destroy(void)
 {
     Shell_NotifyIconW(NIM_DELETE, &g_nid);
+}
+
+/* Shows a Windows notification (tray balloon / Action Center toast).
+ * Requires the tray icon to already be registered. */
+static void tray_notify(const WCHAR *title, const WCHAR *text, DWORD icon)
+{
+    NOTIFYICONDATAW nid;
+
+    ZeroMemory(&nid, sizeof(nid));
+    nid.cbSize   = sizeof(nid);
+    nid.hWnd     = g_nid.hWnd;
+    nid.uID      = g_nid.uID;
+    nid.uFlags   = NIF_INFO;
+    nid.dwInfoFlags = icon;
+    wcscpy_s(nid.szInfoTitle, _countof(nid.szInfoTitle), title);
+    /* szInfo is capped at 256 chars; _TRUNCATE keeps a long localised string
+     * from failing the call outright. */
+    wcsncpy_s(nid.szInfo, _countof(nid.szInfo), text, _TRUNCATE);
+
+    Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+/* Security notice: warn (but do not restrict) when no password is set, so
+ * users who deliberately run without one stay in control. Shown once only --
+ * the flag is persisted, so it never nags on later launches. */
+static void warn_if_no_password(void)
+{
+    if (g_cfg.password[0] != L'\0' || g_cfg.nopw_warned) {
+        return;
+    }
+    tray_notify(LTM_APP_NAME, ltm_str(STR_NOPW_WARN), NIIF_WARNING);
+    g_cfg.nopw_warned = TRUE;
+    ltm_config_save(NULL);
 }
 
 static void tray_show_menu(void)
@@ -445,6 +481,7 @@ static INT_PTR CALLBACK dlg_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
         populate_dialog(dlg);
         refresh_addresses(dlg);
         tray_create();
+        warn_if_no_password();
 
         /* Auto-start the server if configured. */
         if (g_cfg.auto_start_svc) {
@@ -727,13 +764,6 @@ int ltm_ui_run(HINSTANCE hInstance, int nCmdShow)
     /* ---- load config ---------------------------------------------- */
     ltm_config_load();
     ltm_log_init();
-
-    /* #1 security notice: warn (but do not restrict) when no password is set,
-     * so users who deliberately run without a password stay in control. */
-    if (g_cfg.password[0] == L'\0') {
-        MessageBoxW(NULL, ltm_str(STR_NOPW_WARN), LTM_APP_NAME,
-                    MB_OK | MB_ICONWARNING);
-    }
 
     InitCommonControls();
 

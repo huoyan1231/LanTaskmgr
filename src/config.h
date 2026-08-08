@@ -28,6 +28,9 @@ typedef struct ltm_config {
     BOOL        autostart;   /* mirrors the HKCU Run registry value */
     BOOL        start_hidden; /* launch minimised to tray */
     BOOL        auto_start_svc; /* start HTTP service immediately on launch */
+    /* TRUE once the "no password set" notice has been shown. Persisted so the
+     * warning appears a single time and never nags again. */
+    BOOL        nopw_warned;
 } ltm_config;
 
 /* The single global configuration instance. */
