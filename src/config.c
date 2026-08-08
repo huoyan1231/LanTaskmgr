@@ -227,6 +227,24 @@ static WCHAR *trim(WCHAR *s)
     return s;
 }
 
+/* TRUE if `s` is plausibly a hand-typed password rather than the wreckage of a
+ * failed decrypt. Printable ASCII only: the legacy cleartext format was always
+ * written by this program from an edit box, and anything with control chars or
+ * stray non-ASCII is far more likely to be a corrupted blob. */
+static BOOL pw_looks_like_cleartext(const WCHAR *s)
+{
+    size_t i;
+    if (s == NULL || s[0] == L'\0') {
+        return FALSE;
+    }
+    for (i = 0; s[i] != L'\0'; ++i) {
+        if (s[i] < 0x20 || s[i] > 0x7E) {
+            return FALSE;
+        }
+    }
+    return i < LTM_PASSWORD_MAX;
+}
+
 BOOL ltm_config_load(void)
 {
     WCHAR   path[MAX_PATH];
@@ -305,12 +323,24 @@ BOOL ltm_config_load(void)
                 g_cfg.port = p;
             }
         } else if (_wcsicmp(key, L"Password") == 0) {
+            /* An empty value means "no password" and must stay empty. */
             if (val[0] != L'\0') {
-                /* New format: DPAPI-encrypted, stored as base64. Fall back to
-                 * the legacy cleartext format if decryption fails (e.g. an
-                 * old settings.ini edited by hand). */
+                /* Current format: AES-encrypted, stored as base64. Fall back to
+                 * the legacy cleartext format if decryption fails (e.g. an old
+                 * settings.ini, or one edited by hand).
+                 *
+                 * Only accept the fallback if the value looks like something a
+                 * human would type. A file written by a buggy build can hold
+                 * mojibake that neither decrypts nor is a real password; taking
+                 * it verbatim would show ciphertext in the settings dialog and
+                 * lock the user out of their own box. */
                 if (pw_decrypt_from_b64(val, g_cfg.password, LTM_PASSWORD_MAX) < 0) {
-                    ltm_strlcpy_w(g_cfg.password, LTM_PASSWORD_MAX, val);
+                    if (pw_looks_like_cleartext(val)) {
+                        ltm_strlcpy_w(g_cfg.password, LTM_PASSWORD_MAX, val);
+                    } else {
+                        g_cfg.password[0] = L'\0';
+                        ltm_log(L"settings.ini: unreadable Password value ignored");
+                    }
                 }
             }
         } else if (_wcsicmp(key, L"Language") == 0) {
@@ -345,8 +375,9 @@ BOOL ltm_config_save(BOOL *ok_out)
 
     config_path(path, MAX_PATH);
 
-    /* Encrypt the password with DPAPI so the on-disk value is not cleartext.
-     * An empty password stays empty (no encryption needed). */
+    /* Encrypt the password so the on-disk value is not cleartext.
+     * An empty password stays empty (no encryption needed) -- that is how a
+     * user turns the password off, so it must round-trip as a blank value. */
     if (g_cfg.password[0] != L'\0') {
         if (!pw_encrypt_to_b64(g_cfg.password, pw_b64, sizeof(pw_b64))) {
             pw_b64[0] = '\0';
@@ -355,14 +386,17 @@ BOOL ltm_config_save(BOOL *ok_out)
         pw_b64[0] = '\0';
     }
 
+    /* pw_b64 is a narrow (char) string: in a wide format string that is %hs,
+     * NOT %s -- %s would reinterpret the ASCII bytes as UTF-16 and emit
+     * garbage into settings.ini. */
     n = _snwprintf_s(textw, LTM_COUNTOF(textw), _TRUNCATE,
                      L"; LanTaskmgr settings\r\n"
-                     L"; The password is encrypted with DPAPI and only the\r\n"
-                     L"; current Windows user can decrypt it.\r\n"
+                     L"; The password is stored encrypted (AES-256-CBC), not\r\n"
+                     L"; in cleartext. An empty value means no password.\r\n"
                      L"\r\n"
                      L"[LanTaskmgr]\r\n"
                      L"Port=%d\r\n"
-                     L"Password=%s\r\n"
+                     L"Password=%hs\r\n"
                      L"Language=%s\r\n"
                      L"BindIP=%s\r\n"
                      L"AutoStart=%d\r\n"
