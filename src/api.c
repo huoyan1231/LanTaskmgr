@@ -28,11 +28,27 @@ static CRITICAL_SECTION g_lock;
 static BOOL             g_ready;
 static session          g_sessions[LTM_MAX_SESSIONS];
 
+/* SHA-256 provider is opened once and reused for every request's User-Agent
+ * hash instead of being opened and closed per call. */
+static BCRYPT_ALG_HANDLE g_sha256_alg;
+
 static void ensure_init(void)
 {
     if (!g_ready) {
         InitializeCriticalSection(&g_lock);
+        if (g_sha256_alg == NULL) {
+            BCryptOpenAlgorithmProvider(&g_sha256_alg,
+                                        BCRYPT_SHA256_ALGORITHM, NULL, 0);
+        }
         g_ready = TRUE;
+    }
+}
+
+void ltm_api_shutdown(void)
+{
+    if (g_sha256_alg != NULL) {
+        BCryptCloseAlgorithmProvider(g_sha256_alg, 0);
+        g_sha256_alg = NULL;
     }
 }
 
@@ -97,14 +113,15 @@ static const char *cookie_token(const ltm_http_request *req, char *out, size_t c
 static void ua_hash_of(const char *ua, char *out, size_t out_cap)
 {
     BYTE        digest[32];
-    BCRYPT_ALG_HANDLE alg = NULL;
     BCRYPT_HASH_HANDLE h = NULL;
 
     out[0] = '\0';
-    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, NULL, 0) != 0) {
+    /* g_sha256_alg is opened once in ensure_init(); fall back to a transient
+     * provider only if that open somehow failed. */
+    if (g_sha256_alg == NULL) {
         return;
     }
-    if (BCryptCreateHash(alg, &h, NULL, 0, NULL, 0, 0) == 0) {
+    if (BCryptCreateHash(g_sha256_alg, &h, NULL, 0, NULL, 0, 0) == 0) {
         const char *s = (ua != NULL) ? ua : "";
         if (BCryptHashData(h, (PUCHAR)s, (ULONG)strlen(s), 0) == 0 &&
             BCryptFinishHash(h, digest, sizeof(digest), 0) == 0) {
@@ -112,7 +129,6 @@ static void ua_hash_of(const char *ua, char *out, size_t out_cap)
         }
         BCryptDestroyHash(h);
     }
-    BCryptCloseAlgorithmProvider(alg, 0);
 }
 
 /* Extracts the host portion (up to ':' or '/' or end) of a string. */

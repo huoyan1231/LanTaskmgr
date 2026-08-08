@@ -9,6 +9,9 @@
 /* Drops every active session. Called whenever the service starts. */
 void ltm_api_reset(void);
 
+/* Releases the cached BCrypt provider. Call once at process exit. */
+void ltm_api_shutdown(void);
+
 /* Number of distinct clients that have logged in since the last reset,
  * shown in the desktop window. */
 int ltm_api_active_sessions(void);

@@ -605,6 +605,7 @@ static INT_PTR CALLBACK dlg_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
         tray_destroy();
         if (g_server_running) { server_stop(dlg); }
         save_from_dialog(dlg);
+        ltm_api_shutdown();
         PostQuitMessage(0);
         return 0;
     }
