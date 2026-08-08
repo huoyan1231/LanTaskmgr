@@ -32,6 +32,9 @@ typedef struct ltm_http_request {
     const char     *body;
     size_t          body_len;
     unsigned long   client_ip;  /* host byte order */
+    char            host[256];   /* value of the Host header, if present */
+    char            origin[256];  /* value of the Origin header, if present */
+    char            ua_hash[44];  /* SHA-256(User-Agent) fingerprint, base64 */
 } ltm_http_request;
 
 /* Case-insensitive lookup. Returns NULL when absent. */

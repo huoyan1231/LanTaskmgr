@@ -417,6 +417,90 @@ void ltm_bytes_to_hex(const void *bytes, size_t len, char *out)
 }
 
 /* ------------------------------------------------------------------ */
+/* Base64                                                              */
+/* ------------------------------------------------------------------ */
+
+/* Encodes `len` bytes into `out` (NUL-terminated). `out_cap` must be at least
+ * ((len + 2) / 3) * 4 + 1. Returns FALSE on overflow. */
+BOOL ltm_base64_encode(const void *data, size_t len, char *out, size_t out_cap)
+{
+    static const char tbl[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const unsigned char *in = (const unsigned char *)data;
+    size_t i, o = 0, need = ((len + 2) / 3) * 4 + 1;
+
+    if (out_cap < need) {
+        return FALSE;
+    }
+    for (i = 0; i + 3 <= len; i += 3) {
+        unsigned v = (in[i] << 16) | (in[i + 1] << 8) | in[i + 2];
+        out[o++] = tbl[(v >> 18) & 0x3f];
+        out[o++] = tbl[(v >> 12) & 0x3f];
+        out[o++] = tbl[(v >> 6) & 0x3f];
+        out[o++] = tbl[v & 0x3f];
+    }
+    if (len - i == 1) {
+        unsigned v = in[i] << 16;
+        out[o++] = tbl[(v >> 18) & 0x3f];
+        out[o++] = tbl[(v >> 12) & 0x3f];
+        out[o++] = '=';
+        out[o++] = '=';
+    } else if (len - i == 2) {
+        unsigned v = (in[i] << 16) | (in[i + 1] << 8);
+        out[o++] = tbl[(v >> 18) & 0x3f];
+        out[o++] = tbl[(v >> 12) & 0x3f];
+        out[o++] = tbl[(v >> 6) & 0x3f];
+        out[o++] = '=';
+    }
+    out[o] = '\0';
+    return TRUE;
+}
+
+/* Decodes a NUL-terminated base64 string into `out`. Returns the number of
+ * bytes written, or -1 on malformed input or insufficient `out_cap`. */
+int ltm_base64_decode(const char *s, void *out, size_t out_cap)
+{
+    const unsigned char *in = (const unsigned char *)s;
+    unsigned char *o = (unsigned char *)out;
+    size_t written = 0, i = 0;
+    int  bits = 0, acc = 0, pad = 0;
+
+    if (s == NULL) {
+        return -1;
+    }
+    while (in[i] != '\0') {
+        int v;
+        char c = (char)in[i++];
+
+        if (c >= 'A' && c <= 'Z')       v = c - 'A';
+        else if (c >= 'a' && c <= 'z')  v = c - 'a' + 26;
+        else if (c >= '0' && c <= '9')  v = c - '0' + 52;
+        else if (c == '+')              v = 62;
+        else if (c == '/')              v = 63;
+        else if (c == '=')              { pad++; bits -= 0; continue; }
+        else if (c == ' ' || c == '\t' || c == '\r' || c == '\n') continue;
+        else return -1; /* invalid char */
+
+        if (pad > 0) {
+            return -1; /* data after padding */
+        }
+        acc = (acc << 6) | v;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            if (written >= out_cap) {
+                return -1;
+            }
+            o[written++] = (unsigned char)((acc >> bits) & 0xff);
+        }
+    }
+    if (bits >= 6) {
+        return -1; /* stray bits */
+    }
+    return (int)written;
+}
+
+/* ------------------------------------------------------------------ */
 /* Paths                                                               */
 /* ------------------------------------------------------------------ */
 

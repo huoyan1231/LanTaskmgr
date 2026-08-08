@@ -39,7 +39,7 @@ static BOOL CALLBACK set_child_font(HWND child, LPARAM font);
 /* ------------------------------------------------------------------ */
 
 #define LTM_APP_NAME       L"LanTaskmgr"
-#define LTM_MUTEX_NAME     L"Global\\LanTaskmgr_SingleInstance"
+#define LTM_MUTEX_NAME     L"Local\\LanTaskmgr_SingleInstance"
 #define LTM_WM_TRAY        (WM_APP + 0)
 #define LTM_WM_REFRESH     (WM_APP + 1)
 #define LTM_TIMER_REFRESH  1
@@ -357,7 +357,11 @@ static void populate_dialog(HWND dlg)
     _snwprintf_s(buf, _countof(buf), _TRUNCATE, L"%d", g_cfg.port);
     SetDlgItemTextW(dlg, IDC_PORT, buf);
 
-    /* Password (masked) */
+    /* Password (masked by default; the toggle button reveals it). */
+    {
+        HWND hPw = GetDlgItem(dlg, IDC_PASSWORD);
+        SendMessageW(hPw, EM_SETPASSWORDCHAR, (WPARAM)L'*', 0);
+    }
     SetDlgItemTextW(dlg, IDC_PASSWORD, g_cfg.password);
 
     /* Bind IP (empty = all interfaces) */
@@ -620,9 +624,9 @@ static HWND create_main_dialog(HINSTANCE hinst)
     /* -- Row 1: Password --------------------------------------------- */
     make_label(dlg, -1, ltm_str(STR_LBL_PASSWORD), MARGIN, y, lw, eh);
     c = make_edit(dlg, IDC_PASSWORD, MARGIN + lw + GAP, y, ew, eh);
-    /* Default: password is VISIBLE (no EM_SETPASSWORDCHAR). The toggle
-     * button next to it switches between clear and masked ('*'). */
-    make_button(dlg, IDC_TOGGLE_PW, ltm_str(STR_BTN_HIDE_PW),
+    /* Default: password is MASKED (EM_SETPASSWORDCHAR '*', set in
+     * populate_dialog). The toggle button reveals/hides it. */
+    make_button(dlg, IDC_TOGGLE_PW, ltm_str(STR_BTN_SHOW_PW),
                 MARGIN + lw + ew + GAP * 2, y, 28, eh);
     make_button(dlg, IDC_GENERATE_PW, ltm_str(STR_BTN_GENPW),
                 MARGIN + lw + ew + GAP * 3 + 28, y, bw + 20, bh);
@@ -723,6 +727,13 @@ int ltm_ui_run(HINSTANCE hInstance, int nCmdShow)
     /* ---- load config ---------------------------------------------- */
     ltm_config_load();
     ltm_log_init();
+
+    /* #1 security notice: warn (but do not restrict) when no password is set,
+     * so users who deliberately run without a password stay in control. */
+    if (g_cfg.password[0] == L'\0') {
+        MessageBoxW(NULL, ltm_str(STR_NOPW_WARN), LTM_APP_NAME,
+                    MB_OK | MB_ICONWARNING);
+    }
 
     InitCommonControls();
 

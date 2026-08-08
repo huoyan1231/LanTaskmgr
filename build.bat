@@ -58,7 +58,7 @@ rem /GS      keep stack cookies: the HTTP parser is network facing
 rem /Gy      COMDAT folding fodder for /OPT:ICF
 set "CFLAGS=/nologo /W4 /std:c11 /MT /GS /Gy /Gw /utf-8 /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_CRT_SECURE_NO_WARNINGS /I"%SRC%" /I"%RES%""
 set "LDFLAGS=/nologo /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /INCREMENTAL:NO"
-set "LIBS=kernel32.lib user32.lib gdi32.lib advapi32.lib shell32.lib comctl32.lib ws2_32.lib iphlpapi.lib ntdll.lib psapi.lib shlwapi.lib"
+set "LIBS=kernel32.lib user32.lib gdi32.lib advapi32.lib shell32.lib comctl32.lib ws2_32.lib iphlpapi.lib ntdll.lib psapi.lib shlwapi.lib bcrypt.lib"
 
 if /i "%MODE%"=="debug" (
     set "CFLAGS=%CFLAGS% /Od /Zi /DLTM_DEBUG=1"

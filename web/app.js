@@ -47,7 +47,8 @@
       killedProtected: 'Protected \u2014 refused',
       killedGone: 'Already gone',
       killedDenied: 'Access denied',
-      offline: 'Connection lost \u2014 retrying\u2026'
+      offline: 'Connection lost \u2014 retrying\u2026',
+      noTitle: 'no title'
     },
     CN: {
       title: '局域网任务管理器',
@@ -83,7 +84,8 @@
       killedProtected: '受保护进程，已拒绝',
       killedGone: '进程已不存在',
       killedDenied: '权限不足',
-      offline: '连接已断开，正在重试\u2026'
+      offline: '连接已断开，正在重试\u2026',
+      noTitle: '无标题'
     },
     TW: {
       title: '區域網路工作管理員',
@@ -119,7 +121,8 @@
       killedProtected: '受保護的處理程序，已拒絕',
       killedGone: '處理程序已不存在',
       killedDenied: '權限不足',
-      offline: '連線中斷，正在重試\u2026'
+      offline: '連線中斷，正在重試\u2026',
+      noTitle: '無標題'
     }
   };
 
@@ -365,7 +368,7 @@
       var r = { el: el, name: nameText, tag: tag, cnt: cnt,
                 sub: sub, mem: mem, cpu: cpu, cache: {} };
 
-      el.onclick = function () { openSheet(d.n); };
+      el.onclick = function () { openSheet(d); };
       return r;
     }
 
@@ -513,11 +516,14 @@
     var sheetCpu = document.getElementById('sheetCpu');
     var sheetCount = document.getElementById('sheetCount');
     var sheetWarn = document.getElementById('sheetWarn');
+    var sheetPins = document.getElementById('sheetPins');
     var sheetKill = document.getElementById('sheetKill');
     var sheetCancel = document.getElementById('sheetCancel');
 
     function refreshSheet() {
       var d = find(selected);
+      var i, pin, li, label, pidSpan, btn;
+
       if (!d) { closeSheet(); return; }
       sheetName.textContent = d.n;
       sheetTitle.textContent = d.t || '';
@@ -525,6 +531,38 @@
       sheetMem.textContent = bytes(d.m);
       sheetCpu.textContent = pct(d.p);
       sheetCount.textContent = String(d.i);
+
+      /* Build the per-instance PID list: each row ends exactly one process. */
+      sheetPins.textContent = '';
+      for (i = 0; i < (d.pins ? d.pins.length : 0); i++) {
+        pin = d.pins[i];
+        li = document.createElement('li');
+        li.className = 'pin';
+
+        label = document.createElement('span');
+        label.className = 'pin-label';
+        label.textContent = pin.t || t('noTitle');
+        li.appendChild(label);
+
+        pidSpan = document.createElement('span');
+        pidSpan.className = 'pin-pid';
+        pidSpan.textContent = 'PID ' + pin.p;
+        li.appendChild(pidSpan);
+
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pin-kill';
+        btn.textContent = t('endTask');
+        btn.onclick = (function (pid) {
+          return function () {
+            killOne(d, pid, btn);
+          };
+        })(pin.p);
+        if (d.k) { btn.disabled = true; }
+        li.appendChild(btn);
+
+        sheetPins.appendChild(li);
+      }
 
       if (d.k) {
         sheetWarn.textContent = t('protectedWarn');
@@ -540,8 +578,33 @@
       }
     }
 
-    function openSheet(name) {
-      selected = name;
+    /* Ends a single process by PID. */
+    function killOne(d, pid, btn) {
+      var name = d.n;
+      if (btn) { btn.disabled = true; btn.textContent = t('ending'); }
+
+      post('/kill', String(pid), function (status, text) {
+        if (status === 401) { location.replace('/'); return; }
+        if (btn) { btn.textContent = t('endTask'); }
+
+        if (status === 200 && (text === 'ok' || text === 'partial')) {
+          toast(t('killedOk', { name: name }));
+        } else if (status === 403 && text === 'protected') {
+          toast(t('killedProtected'), true);
+        } else if (status === 404) {
+          toast(t('killedGone'), true);
+        } else if (status === 0) {
+          toast(t('netErr'), true);
+        } else {
+          toast(t('killedDenied'), true);
+          if (btn) { btn.disabled = false; }
+        }
+        schedule(150);
+      });
+    }
+
+    function openSheet(d) {
+      selected = d.n;
       sheetKill.textContent = t('endTask');
       refreshSheet();
       if (selected) { sheet.hidden = false; }
@@ -558,19 +621,21 @@
     sheetCancel.onclick = closeSheet;
 
     sheetKill.onclick = function () {
-      if (!selected) { return; }
-      var name = selected;
+      var d = find(selected);
+      if (!d || !d.pins || d.pins.length === 0) { return; }
       sheetKill.disabled = true;
       sheetKill.textContent = t('ending');
 
-      post('/kill', name, function (status, text) {
+      /* Batch kill by PID: end exactly the processes we listed, never by name. */
+      post('/kill', d.pins.map(function (p) { return p.p; }).join(','),
+          function (status, text) {
         closeSheet();
         sheetKill.textContent = t('endTask');
 
         if (status === 200 && text === 'ok') {
-          toast(t('killedOk', { name: name }));
+          toast(t('killedOk', { name: d.n }));
         } else if (status === 200 && text === 'partial') {
-          toast(t('killedPartial', { name: name }), true);
+          toast(t('killedPartial', { name: d.n }), true);
         } else if (status === 404) {
           toast(t('killedGone'), true);
         } else if (status === 403 && text === 'protected') {

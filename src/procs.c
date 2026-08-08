@@ -521,6 +521,24 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
         g->instances++;
         g->mem_bytes += rp->mem;
 
+        if (g->pid_count < LTM_PROC_PID_BATCH) {
+            int idx = g->pid_count++;
+            g->pids[idx] = rp->pid;
+            if (!g->is_protected) {
+                title = find_title(&wins, rp->pid);
+                if (title != NULL) {
+                    ltm_strlcpy_w(g->ptitles[idx], LTM_PROC_TITLE_MAX, title);
+                    g->piswin[idx] = TRUE;
+                } else {
+                    g->ptitles[idx][0] = L'\0';
+                    g->piswin[idx] = FALSE;
+                }
+            } else {
+                g->ptitles[idx][0] = L'\0';
+                g->piswin[idx] = FALSE;
+            }
+        }
+
         prev = prev_cpu_for(rp->pid, &had_prev);
         if (had_prev && wall_delta > 0 && rp->cpu100ns > prev) {
             double pct = (double)(rp->cpu100ns - prev) * 100.0 /
@@ -633,4 +651,48 @@ ltm_kill_result ltm_proc_kill_by_name(const WCHAR *name, int *killed_out)
     }
     ltm_log(L"kill '%s': terminated %d of %d instance(s)", name, killed, matched);
     return (denied > 0) ? LTM_KILL_PARTIAL : LTM_KILL_OK;
+}
+
+ltm_kill_result ltm_proc_kill_by_pid(DWORD pid)
+{
+    HANDLE h;
+    DWORD  self = GetCurrentProcessId();
+
+    if (pid == 0 || pid == self) {
+        return LTM_KILL_DENIED;
+    }
+
+    /* PROCESS_QUERY_LIMITED_INFORMATION lets us read the image path on Vista+
+     * without the full PROCESS_QUERY_INFORMATION privilege requirement. */
+    h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                    FALSE, pid);
+    if (h == NULL) {
+        ltm_log(L"kill pid %lu: open failed (%lu)", pid, GetLastError());
+        return (GetLastError() == ERROR_ACCESS_DENIED)
+                   ? LTM_KILL_DENIED : LTM_KILL_NOT_FOUND;
+    }
+
+    {
+        WCHAR path[MAX_PATH];
+        DWORD n = MAX_PATH;
+        if (QueryFullProcessImageNameW(h, 0, path, &n) && n > 0) {
+            WCHAR *base = wcsrchr(path, L'\\');
+            base = (base != NULL) ? base + 1 : path;
+            if (ltm_proc_is_protected_name(base)) {
+                ltm_log(L"kill pid %lu (%s): protected, refused", pid, base);
+                CloseHandle(h);
+                return LTM_KILL_PROTECTED;
+            }
+        }
+    }
+
+    if (TerminateProcess(h, 1)) {
+        ltm_log(L"kill pid %lu: terminated", pid);
+        CloseHandle(h);
+        return LTM_KILL_OK;
+    }
+
+    ltm_log(L"kill pid %lu: terminate failed (%lu)", pid, GetLastError());
+    CloseHandle(h);
+    return LTM_KILL_DENIED;
 }

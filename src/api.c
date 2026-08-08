@@ -8,31 +8,25 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <bcrypt.h>
 
 #define LTM_SESSION_HEX_LEN   32                 /* 16 random bytes */
 #define LTM_SESSION_TTL_MS    (12 * 60 * 60 * 1000ULL)
 #define LTM_MAX_SESSIONS      8
-#define LTM_MAX_FAIL_ENTRIES  64
-#define LTM_MAX_LOGIN_FAILS   5
 #define LTM_COOKIE_NAME       "ltm"
+#define LTM_UA_HASH_LEN       28                 /* base64 of 16 bytes + NUL */
 
 typedef struct session {
     char          token[LTM_SESSION_HEX_LEN + 1];
     unsigned long ip;
     ULONGLONG     expires;
     BOOL          active;
+    char          ua_hash[LTM_UA_HASH_LEN]; /* binds session to the User-Agent */
 } session;
-
-typedef struct fail_entry {
-    unsigned long ip;
-    int           fails;
-    BOOL          in_use;
-} fail_entry;
 
 static CRITICAL_SECTION g_lock;
 static BOOL             g_ready;
 static session          g_sessions[LTM_MAX_SESSIONS];
-static fail_entry       g_fails[LTM_MAX_FAIL_ENTRIES];
 
 static void ensure_init(void)
 {
@@ -47,7 +41,6 @@ void ltm_api_reset(void)
     ensure_init();
     EnterCriticalSection(&g_lock);
     ZeroMemory(g_sessions, sizeof(g_sessions));
-    ZeroMemory(g_fails, sizeof(g_fails));
     LeaveCriticalSection(&g_lock);
 }
 
@@ -66,42 +59,6 @@ int ltm_api_active_sessions(void)
     }
     LeaveCriticalSection(&g_lock);
     return n;
-}
-
-/* ------------------------------------------------------------------ */
-/* Brute force throttling                                              */
-/* ------------------------------------------------------------------ */
-
-static fail_entry *fail_find(unsigned long ip, BOOL create)
-{
-    int i, free_slot = -1;
-    for (i = 0; i < LTM_MAX_FAIL_ENTRIES; ++i) {
-        if (g_fails[i].in_use && g_fails[i].ip == ip) {
-            return &g_fails[i];
-        }
-        if (!g_fails[i].in_use && free_slot < 0) {
-            free_slot = i;
-        }
-    }
-    if (!create || free_slot < 0) {
-        return NULL;
-    }
-    g_fails[free_slot].in_use = TRUE;
-    g_fails[free_slot].ip = ip;
-    g_fails[free_slot].fails = 0;
-    return &g_fails[free_slot];
-}
-
-static BOOL ip_is_blocked(unsigned long ip)
-{
-    fail_entry *e;
-    BOOL        blocked;
-
-    EnterCriticalSection(&g_lock);
-    e = fail_find(ip, FALSE);
-    blocked = (e != NULL && e->fails >= LTM_MAX_LOGIN_FAILS);
-    LeaveCriticalSection(&g_lock);
-    return blocked;
 }
 
 /* ------------------------------------------------------------------ */
@@ -133,6 +90,82 @@ static const char *cookie_token(const ltm_http_request *req, char *out, size_t c
     return NULL;
 }
 
+/* SHA-256 of the User-Agent, truncated to the first 16 bytes and base64-encoded.
+ * Used to bind a session to the client software, lowering the risk that two
+ * devices behind the same NAT (hence the same client_ip) hijack each other's
+ * session cookie. */
+static void ua_hash_of(const char *ua, char *out, size_t out_cap)
+{
+    BYTE        digest[32];
+    BCRYPT_ALG_HANDLE alg = NULL;
+    BCRYPT_HASH_HANDLE h = NULL;
+
+    out[0] = '\0';
+    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, NULL, 0) != 0) {
+        return;
+    }
+    if (BCryptCreateHash(alg, &h, NULL, 0, NULL, 0, 0) == 0) {
+        const char *s = (ua != NULL) ? ua : "";
+        if (BCryptHashData(h, (PUCHAR)s, (ULONG)strlen(s), 0) == 0 &&
+            BCryptFinishHash(h, digest, sizeof(digest), 0) == 0) {
+            ltm_base64_encode(digest, 16, out, out_cap);
+        }
+        BCryptDestroyHash(h);
+    }
+    BCryptCloseAlgorithmProvider(alg, 0);
+}
+
+/* Extracts the host portion (up to ':' or '/' or end) of a string. */
+static void host_of(const char *s, char *out, size_t cap)
+{
+    size_t i = 0, o = 0;
+    int    started = 0;
+
+    if (s == NULL) {
+        out[0] = '\0';
+        return;
+    }
+    /* Skip a scheme like "http://". */
+    if (strncmp(s, "http://", 7) == 0) {
+        i = 7;
+    } else if (strncmp(s, "https://", 8) == 0) {
+        i = 8;
+    }
+    for (; s[i] != '\0'; ++i) {
+        char c = s[i];
+        if (c == '/' || c == '?' || (started && c == ':')) {
+            break;
+        }
+        if (o + 1 < cap) {
+            out[o++] = c;
+            started = 1;
+        }
+    }
+    out[o] = '\0';
+}
+
+/* Allows a request unless it carries an Origin that points at a different host
+ * than the one in the Host header (classic CSRF / cross-site check). A missing
+ * Origin (same-origin simple requests, old browsers) is permitted. */
+static BOOL origin_allowed(const ltm_http_request *req)
+{
+    char o_host[256];
+    char h_host[256];
+
+    if (req->origin[0] == '\0') {
+        return TRUE;
+    }
+    host_of(req->origin, o_host, sizeof(o_host));
+    host_of(req->host,   h_host, sizeof(h_host));
+    if (o_host[0] == '\0' || h_host[0] == '\0') {
+        /* Could not parse; fail open only when no Origin was supplied (handled
+         * above). With an unparseable Origin we refuse to be safe. */
+        return (req->host[0] == '\0');
+    }
+    /* Case-insensitive host comparison. */
+    return (ltm_stricmp_a(o_host, h_host) == 0);
+}
+
 static BOOL session_validate(const ltm_http_request *req)
 {
     char       token[128];
@@ -155,7 +188,9 @@ static BOOL session_validate(const ltm_http_request *req)
             s->active = FALSE;
             continue;
         }
-        if (s->ip == req->client_ip && ltm_const_time_equal(s->token, token)) {
+        if (s->ip == req->client_ip &&
+            ltm_const_time_equal(s->token, token) &&
+            ltm_const_time_equal(s->ua_hash, req->ua_hash)) {
             s->expires = now + LTM_SESSION_TTL_MS; /* sliding window */
             ok = TRUE;
             break;
@@ -165,7 +200,8 @@ static BOOL session_validate(const ltm_http_request *req)
     return ok;
 }
 
-static BOOL session_create(unsigned long ip, char *token_out /* >= 33 */)
+static BOOL session_create(unsigned long ip, const char *ua_hash,
+                            char *token_out /* >= 33 */)
 {
     unsigned char raw[16];
     ULONGLONG     now = GetTickCount64();
@@ -189,6 +225,8 @@ static BOOL session_create(unsigned long ip, char *token_out /* >= 33 */)
     if (slot >= 0) {
         ltm_strlcpy_a(g_sessions[slot].token, sizeof(g_sessions[slot].token), token_out);
         g_sessions[slot].ip = ip;
+        ltm_strlcpy_a(g_sessions[slot].ua_hash, sizeof(g_sessions[slot].ua_hash),
+                      ua_hash);
         g_sessions[slot].expires = now + LTM_SESSION_TTL_MS;
         g_sessions[slot].active = TRUE;
     }
@@ -296,22 +334,8 @@ static void handle_login(const ltm_http_request *req, ltm_http_response *res)
     ltm_free(supplied);
 
     if (!ok) {
-        fail_entry *e;
-        int         fails = 0;
-
-        EnterCriticalSection(&g_lock);
-        e = fail_find(req->client_ip, TRUE);
-        if (e != NULL) {
-            fails = ++e->fails;
-        }
-        LeaveCriticalSection(&g_lock);
-
-        ltm_log(L"failed login from %S (%d/%d)", ipstr, fails, LTM_MAX_LOGIN_FAILS);
-        if (fails >= LTM_MAX_LOGIN_FAILS) {
-            ltm_http_set_text(res, 403, "text/plain", "blocked");
-        } else {
-            ltm_http_set_text(res, 401, "text/plain", "bad");
-        }
+        ltm_log(L"failed login from %S", ipstr);
+        ltm_http_set_text(res, 401, "text/plain", "bad");
         return;
     }
 
@@ -319,17 +343,7 @@ static void handle_login(const ltm_http_request *req, ltm_http_response *res)
         char token[LTM_SESSION_HEX_LEN + 1];
         char cookie[160];
 
-        EnterCriticalSection(&g_lock);
-        {
-            fail_entry *e = fail_find(req->client_ip, FALSE);
-            if (e != NULL) {
-                e->in_use = FALSE;
-                e->fails = 0;
-            }
-        }
-        LeaveCriticalSection(&g_lock);
-
-        if (!session_create(req->client_ip, token)) {
+        if (!session_create(req->client_ip, req->ua_hash, token)) {
             ltm_http_set_text(res, 500, "text/plain", "bad");
             return;
         }
@@ -396,6 +410,26 @@ static void handle_list(ltm_http_response *res)
         if (g->is_protected) {
             ltm_buf_puts(&res->body, ",\"k\":1");
         }
+        {
+            int j;
+            ltm_buf_puts(&res->body, ",\"pins\":[");
+            for (j = 0; j < g->pid_count; ++j) {
+                if (j > 0) {
+                    ltm_buf_putc(&res->body, ',');
+                }
+                ltm_buf_printf(&res->body, "{\"p\":%lu", (unsigned long)g->pids[j]);
+                if (g->ptitles[j][0] != L'\0') {
+                    ltm_buf_puts(&res->body, ",\"t\":\"");
+                    ltm_buf_put_json_escaped_w(&res->body, g->ptitles[j]);
+                    ltm_buf_puts(&res->body, "\"");
+                }
+                if (g->piswin[j]) {
+                    ltm_buf_puts(&res->body, ",\"w\":1");
+                }
+                ltm_buf_putc(&res->body, '}');
+            }
+            ltm_buf_puts(&res->body, "]");
+        }
         ltm_buf_putc(&res->body, '}');
     }
 
@@ -405,33 +439,65 @@ static void handle_list(ltm_http_response *res)
 
 static void handle_kill(const ltm_http_request *req, ltm_http_response *res)
 {
-    WCHAR          *name;
-    int             killed = 0;
-    ltm_kill_result r;
-    char            ipstr[24];
+    char  ipstr[24];
+    char  buf[4096];
+    int   killed = 0, denied = 0, protected_n = 0, notfound = 0;
+    char *cursor;
 
-    if (req->body_len == 0 || req->body_len > 256) {
+    /* The body is a list of PIDs (comma/space separated). A group can contain
+     * hundreds of instances, so allow up to the HTTP body cap. */
+    if (req->body_len == 0 || req->body_len > (int)sizeof(buf) - 1) {
         ltm_http_set_text(res, 400, "text/plain", "fail");
         return;
     }
-    name = ltm_utf8_to_utf16(req->body, (int)req->body_len);
-    if (name == NULL) {
-        ltm_http_set_text(res, 500, "text/plain", "fail");
-        return;
-    }
+    memcpy(buf, req->body, req->body_len);
+    buf[req->body_len] = '\0';
 
     ip_to_string(req->client_ip, ipstr, sizeof(ipstr));
-    ltm_log(L"%S requested kill of '%s'", ipstr, name);
+    ltm_log(L"%S requested kill of pids '%s'", ipstr, buf);
 
-    r = ltm_proc_kill_by_name(name, &killed);
-    ltm_free(name);
+    /* The body is a comma- or space-separated list of decimal PIDs. Each is
+     * terminated individually so one bad/already-gone pid does not abort the
+     * rest. */
+    cursor = buf;
+    for (;;) {
+        char *sep = cursor;
+        DWORD pid;
+        ltm_kill_result r;
 
-    switch (r) {
-    case LTM_KILL_OK:        ltm_http_set_text(res, 200, "text/plain", "ok"); break;
-    case LTM_KILL_PARTIAL:   ltm_http_set_text(res, 200, "text/plain", "partial"); break;
-    case LTM_KILL_PROTECTED: ltm_http_set_text(res, 403, "text/plain", "protected"); break;
-    case LTM_KILL_NOT_FOUND: ltm_http_set_text(res, 404, "text/plain", "gone"); break;
-    default:                 ltm_http_set_text(res, 403, "text/plain", "denied"); break;
+        while (*sep != '\0' && *sep != ',' && *sep != ' ' && *sep != '\t') {
+            ++sep;
+        }
+        if (sep != cursor) {
+            char  saved = *sep;
+            *sep = '\0';
+            pid = (DWORD)strtoul(cursor, NULL, 10);
+            *sep = saved;
+
+            r = ltm_proc_kill_by_pid(pid);
+            switch (r) {
+            case LTM_KILL_OK:        ++killed; break;
+            case LTM_KILL_PROTECTED: ++protected_n; break;
+            case LTM_KILL_NOT_FOUND: ++notfound; break;
+            default:                 ++denied; break;
+            }
+        }
+        if (*sep == '\0') {
+            break;
+        }
+        cursor = sep + 1;
+    }
+
+    if (killed > 0 && denied == 0 && protected_n == 0) {
+        ltm_http_set_text(res, 200, "text/plain", "ok");
+    } else if (killed > 0) {
+        ltm_http_set_text(res, 200, "text/plain", "partial");
+    } else if (protected_n > 0) {
+        ltm_http_set_text(res, 403, "text/plain", "protected");
+    } else if (notfound > 0) {
+        ltm_http_set_text(res, 404, "text/plain", "gone");
+    } else {
+        ltm_http_set_text(res, 403, "text/plain", "denied");
     }
 }
 
@@ -444,16 +510,17 @@ void ltm_api_handle(const ltm_http_request *req, ltm_http_response *res)
     BOOL is_get = (strcmp(req->method, "GET") == 0);
     BOOL is_post = (strcmp(req->method, "POST") == 0);
     BOOL authed;
+    char ua_hash[LTM_UA_HASH_LEN];
 
     ensure_init();
 
+    /* Bind every request to its User-Agent fingerprint so sessions created in
+     * handle_login can be validated against it later. */
+    ua_hash_of(ltm_http_header_get(req, "User-Agent"), ua_hash, sizeof(ua_hash));
+    ltm_strlcpy_a(req->ua_hash, sizeof(req->ua_hash), ua_hash);
+
     if (!is_get && !is_post) {
         ltm_http_set_text(res, 405, "text/plain", "method not allowed");
-        return;
-    }
-
-    if (ip_is_blocked(req->client_ip)) {
-        ltm_http_set_text(res, 403, "text/plain", "blocked");
         return;
     }
 
@@ -488,10 +555,18 @@ void ltm_api_handle(const ltm_http_request *req, ltm_http_response *res)
 
     /* --- API ------------------------------------------------------ */
     if (strcmp(req->path, "/dologin") == 0) {
+        if (!origin_allowed(req)) {
+            ltm_http_set_text(res, 403, "text/plain", "forbidden");
+            return;
+        }
         handle_login(req, res);
         return;
     }
     if (strcmp(req->path, "/logout") == 0) {
+        if (!origin_allowed(req)) {
+            ltm_http_set_text(res, 403, "text/plain", "forbidden");
+            return;
+        }
         session_drop(req);
         ltm_http_add_header(res, "Set-Cookie: " LTM_COOKIE_NAME "=; Path=/; Max-Age=0");
         ltm_http_set_text(res, 200, "text/plain", "ok");
@@ -508,6 +583,10 @@ void ltm_api_handle(const ltm_http_request *req, ltm_http_response *res)
         return;
     }
     if (strcmp(req->path, "/kill") == 0) {
+        if (!origin_allowed(req)) {
+            ltm_http_set_text(res, 403, "text/plain", "forbidden");
+            return;
+        }
         handle_kill(req, res);
         return;
     }

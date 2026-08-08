@@ -72,6 +72,7 @@ typedef enum ltm_str_id {
     STR_BTN_EXIT,
     STR_BTN_HIDE_PW,   /* label when password is visible  -> click to hide */
     STR_BTN_SHOW_PW,   /* label when password is hidden   -> click to show */
+    STR_NOPW_WARN,     /* startup warning when no password is configured */
 
     STR_COUNT
 } ltm_str_id;

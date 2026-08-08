@@ -282,6 +282,17 @@ static int parse_request(char *buf, size_t len, ltm_http_request *req,
     }
 
     {
+        const char *h = ltm_http_header_get(req, "Host");
+        if (h != NULL) {
+            ltm_strlcpy_a(req->host, sizeof(req->host), h);
+        }
+        h = ltm_http_header_get(req, "Origin");
+        if (h != NULL) {
+            ltm_strlcpy_a(req->origin, sizeof(req->origin), h);
+        }
+    }
+
+    {
         const char *cl = ltm_http_header_get(req, "Content-Length");
         if (cl != NULL) {
             content_len = strtol(cl, NULL, 10);

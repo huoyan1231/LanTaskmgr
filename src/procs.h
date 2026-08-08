@@ -11,6 +11,7 @@
 
 #define LTM_PROC_NAME_MAX  64
 #define LTM_PROC_TITLE_MAX 128
+#define LTM_PROC_PID_BATCH 256   /* max instances tracked per group */
 
 typedef enum ltm_pclass {
     LTM_PCLASS_NORMAL = 0, /* background process owned by the user   */
@@ -23,6 +24,10 @@ typedef struct ltm_proc_group {
     WCHAR      title[LTM_PROC_TITLE_MAX]; /* representative window caption */
     DWORD      instances;
     DWORD      pid;         /* first pid seen, for display only */
+    DWORD      pids[LTM_PROC_PID_BATCH];           /* every pid in this group */
+    WCHAR      ptitles[LTM_PROC_PID_BATCH][LTM_PROC_TITLE_MAX]; /* per-instance caption */
+    BOOL       piswin[LTM_PROC_PID_BATCH];         /* per-instance has a window */
+    int        pid_count;
     ULONG64    mem_bytes;   /* summed private working set */
     float      cpu_pct;     /* share of total CPU since the previous snapshot */
     ltm_pclass klass;
@@ -56,6 +61,11 @@ void ltm_proc_snapshot_free(ltm_proc_snapshot *s);
 /* Terminates every process whose image name matches (case insensitive).
  * `killed_out` may be NULL. */
 ltm_kill_result ltm_proc_kill_by_name(const WCHAR *name, int *killed_out);
+
+/* Terminates the single process identified by `pid`. This is the preferred
+ * kill path: it addresses exactly one process, avoiding the name-based races
+ * and same-name collateral of ltm_proc_kill_by_name. */
+ltm_kill_result ltm_proc_kill_by_pid(DWORD pid);
 
 /* TRUE for the handful of processes that instantly bugcheck or reboot
  * Windows when terminated. */

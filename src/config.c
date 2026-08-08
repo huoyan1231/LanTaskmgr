@@ -4,10 +4,152 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <bcrypt.h>
 
 ltm_config g_cfg;
 
 static const WCHAR *const kLangCodes[LTM_LANG_COUNT] = { L"EN", L"CN", L"TW" };
+
+/* ------------------------------------------------------------------ */
+/* Password protection at rest                                          */
+/* ------------------------------------------------------------------ */
+
+/* The password is encrypted with AES-256-CBC so the on-disk value is not
+ * cleartext. The key is derived from a compile-time salt (NOT from the
+ * password itself, and NOT from any Windows user/account): the encrypted blob
+ * is the password, so the key must be obtainable at startup without knowing
+ * the password. This keeps the scheme free of any Windows-user or machine
+ * binding -- it is portable and decrypts on any machine running this binary.
+ *
+ * On-disk format (stored base64):  IV[16] || ciphertext (PKCS7-padded). */
+
+static const char kPwSalt[] = "LanTaskmgr-pw-salt-v1";
+
+/* Derives the 32-byte AES-256 key from the fixed salt via SHA-256. */
+static void pw_derive_key(BYTE key[32])
+{
+    BCRYPT_ALG_HANDLE alg = NULL;
+    BCRYPT_HASH_HANDLE h = NULL;
+
+    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, NULL, 0) != 0) {
+        return;
+    }
+    if (BCryptCreateHash(alg, &h, NULL, 0, NULL, 0, 0) == 0) {
+        BCryptHashData(h, (PUCHAR)kPwSalt, (ULONG)(sizeof(kPwSalt) - 1), 0);
+        BCryptFinishHash(h, key, 32, 0);
+        BCryptDestroyHash(h);
+    }
+    BCryptCloseAlgorithmProvider(alg, 0);
+}
+
+/* Encrypts `pw` (UTF-16) into a base64 string written to `out`.
+ * Returns TRUE on success. */
+static BOOL pw_encrypt_to_b64(const WCHAR *pw, char *out, size_t out_cap)
+{
+    BCRYPT_ALG_HANDLE alg = NULL;
+    BCRYPT_KEY_HANDLE keyh = NULL;
+    BYTE              aes_key[32];
+    BYTE              iv[16];
+    BYTE              plain[256];
+    BYTE              buf[512];          /* IV || ciphertext */
+    ULONG             plain_len, ct_len, got;
+    BOOL              ok = FALSE;
+
+    if (pw == NULL) {
+        pw = L"";
+    }
+    plain_len = (ULONG)(wcslen(pw) * sizeof(WCHAR));
+    if (plain_len == 0 || plain_len + 2 > sizeof(plain)) {
+        return FALSE; /* empty handled by caller; too long rejected */
+    }
+    memcpy(plain, pw, plain_len);
+    /* PKCS7 padding to a 16-byte boundary. */
+    {
+        ULONG pad = 16 - (plain_len % 16);
+        ULONG i;
+        for (i = 0; i < pad; i++) {
+            plain[plain_len + i] = (BYTE)pad;
+        }
+        plain_len += pad;
+    }
+
+    pw_derive_key(aes_key);
+    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_AES_ALGORITHM, NULL, 0) != 0) {
+        return FALSE;
+    }
+    if (BCryptSetProperty(alg, BCRYPT_CHAINING_MODE,
+                          (LPWSTR)BCRYPT_CHAIN_MODE_CBC,
+                          (ULONG)sizeof(BCRYPT_CHAIN_MODE_CBC), 0) != 0) {
+        goto done;
+    }
+    if (BCryptGenerateSymmetricKey(alg, &keyh, NULL, 0, aes_key, 32, 0) != 0) {
+        goto done;
+    }
+    ltm_random_bytes(iv, sizeof(iv));
+
+    ct_len = plain_len; /* AES block cipher: ciphertext length == plaintext */
+    if (BCryptEncrypt(keyh, plain, plain_len, NULL, iv, sizeof(iv),
+                      buf + sizeof(iv), ct_len, &got, 0) == 0) {
+        memcpy(buf, iv, sizeof(iv));
+        ok = ltm_base64_encode(buf, sizeof(iv) + got, out, out_cap);
+    }
+
+done:
+    if (keyh) BCryptDestroyKey(keyh);
+    if (alg)  BCryptCloseAlgorithmProvider(alg, 0);
+    return ok;
+}
+
+/* Reverses pw_encrypt_to_b64: base64-decodes then AES-CBC-decrypts into `out`
+ * (WCHAR buffer of `out_chars` elements). Returns the character count (without
+ * NUL) or -1 on failure. */
+static int pw_decrypt_from_b64(const char *b64, WCHAR *out, size_t out_chars)
+{
+    BYTE              buf[512];
+    int               n = ltm_base64_decode(b64, buf, sizeof(buf));
+    BCRYPT_ALG_HANDLE alg = NULL;
+    BCRYPT_KEY_HANDLE keyh = NULL;
+    BYTE              plain[256];
+    BYTE              aes_key[32];
+    ULONG             got;
+    int               result = -1;
+
+    if (n < 16 || (n - 16) % 16 != 0) {
+        return -1;
+    }
+    pw_derive_key(aes_key);
+    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_AES_ALGORITHM, NULL, 0) != 0) {
+        return -1;
+    }
+    if (BCryptSetProperty(alg, BCRYPT_CHAINING_MODE,
+                          (LPWSTR)BCRYPT_CHAIN_MODE_CBC,
+                          (ULONG)sizeof(BCRYPT_CHAIN_MODE_CBC), 0) != 0) {
+        goto done;
+    }
+    if (BCryptGenerateSymmetricKey(alg, &keyh, NULL, 0, aes_key, 32, 0) != 0) {
+        goto done;
+    }
+    if (BCryptDecrypt(keyh, buf + 16, (ULONG)(n - 16), NULL, buf, 16,
+                      plain, sizeof(plain), &got, 0) == 0) {
+        ULONG pad = (got > 0) ? plain[got - 1] : 0;
+        ULONG chars;
+        if (pad <= 16 && got >= pad) {
+            got -= pad;
+        }
+        chars = got / sizeof(WCHAR);
+        if (chars >= out_chars) {
+            chars = (ULONG)out_chars - 1;
+        }
+        memcpy(out, plain, chars * sizeof(WCHAR));
+        out[chars] = L'\0';
+        result = (int)chars;
+    }
+
+done:
+    if (keyh) BCryptDestroyKey(keyh);
+    if (alg)  BCryptCloseAlgorithmProvider(alg, 0);
+    return result;
+}
 
 const WCHAR *ltm_lang_code(ltm_lang_id id)
 {
@@ -164,7 +306,12 @@ BOOL ltm_config_load(void)
             }
         } else if (_wcsicmp(key, L"Password") == 0) {
             if (val[0] != L'\0') {
-                ltm_strlcpy_w(g_cfg.password, LTM_PASSWORD_MAX, val);
+                /* New format: DPAPI-encrypted, stored as base64. Fall back to
+                 * the legacy cleartext format if decryption fails (e.g. an
+                 * old settings.ini edited by hand). */
+                if (pw_decrypt_from_b64(val, g_cfg.password, LTM_PASSWORD_MAX) < 0) {
+                    ltm_strlcpy_w(g_cfg.password, LTM_PASSWORD_MAX, val);
+                }
             }
         } else if (_wcsicmp(key, L"Language") == 0) {
             g_cfg.lang = ltm_lang_from_code(val);
@@ -194,12 +341,24 @@ BOOL ltm_config_save(BOOL *ok_out)
     DWORD  written = 0;
     BOOL   ok;
     int    n;
+    char   pw_b64[1024];
 
     config_path(path, MAX_PATH);
 
+    /* Encrypt the password with DPAPI so the on-disk value is not cleartext.
+     * An empty password stays empty (no encryption needed). */
+    if (g_cfg.password[0] != L'\0') {
+        if (!pw_encrypt_to_b64(g_cfg.password, pw_b64, sizeof(pw_b64))) {
+            pw_b64[0] = '\0';
+        }
+    } else {
+        pw_b64[0] = '\0';
+    }
+
     n = _snwprintf_s(textw, LTM_COUNTOF(textw), _TRUNCATE,
                      L"; LanTaskmgr settings\r\n"
-                     L"; Anyone who can read this file can read your password.\r\n"
+                     L"; The password is encrypted with DPAPI and only the\r\n"
+                     L"; current Windows user can decrypt it.\r\n"
                      L"\r\n"
                      L"[LanTaskmgr]\r\n"
                      L"Port=%d\r\n"
@@ -209,7 +368,7 @@ BOOL ltm_config_save(BOOL *ok_out)
                      L"AutoStart=%d\r\n"
                      L"StartHidden=%d\r\n"
                      L"AutoStartSvc=%d\r\n",
-                     g_cfg.port, g_cfg.password, ltm_lang_code(g_cfg.lang),
+                     g_cfg.port, pw_b64, ltm_lang_code(g_cfg.lang),
                      g_cfg.bind_ip,
                      g_cfg.autostart ? 1 : 0, g_cfg.start_hidden ? 1 : 0,
                      g_cfg.auto_start_svc ? 1 : 0);

@@ -67,7 +67,11 @@ static const WCHAR *const kEN[STR_COUNT] = {
     /* STR_TRAY_QUIT     */ L"Quit LanTaskmgr",
     /* STR_BTN_EXIT      */ L"Exit",
     /* STR_BTN_HIDE_PW   */ L"Hide",
-    /* STR_BTN_SHOW_PW   */ L"Show"
+    /* STR_BTN_SHOW_PW   */ L"Show",
+    /* STR_NOPW_WARN     */ L"No access password is set.\r\n"
+                             L"Anyone on your local network who can reach this PC "
+                             L"can view and terminate its processes.\r\n"
+                             L"Set a password in Settings to restrict access."
 };
 
 static const WCHAR *const kCN[STR_COUNT] = {
@@ -135,7 +139,10 @@ static const WCHAR *const kCN[STR_COUNT] = {
     /* STR_TRAY_QUIT     */ L"退出程序",
     /* STR_BTN_EXIT      */ L"退出",
     /* STR_BTN_HIDE_PW   */ L"隐藏",
-    /* STR_BTN_SHOW_PW   */ L"显示"
+    /* STR_BTN_SHOW_PW   */ L"显示",
+    /* STR_NOPW_WARN     */ L"当前未设置访问密码。\r\n"
+                             L"局域网内任何能访问本机的设备都能查看并结束其进程。\r\n"
+                             L"请在「设置」中设置密码以限制访问。"
 };
 
 static const WCHAR *const kTW[STR_COUNT] = {
@@ -203,7 +210,10 @@ static const WCHAR *const kTW[STR_COUNT] = {
     /* STR_TRAY_QUIT     */ L"結束程式",
     /* STR_BTN_EXIT      */ L"結束",
     /* STR_BTN_HIDE_PW   */ L"隱藏",
-    /* STR_BTN_SHOW_PW   */ L"顯示"
+    /* STR_BTN_SHOW_PW   */ L"顯示",
+    /* STR_NOPW_WARN     */ L"目前未設定存取密碼。\r\n"
+                             L"區域網路內任何能連線到這台電腦的裝置都能檢視並結束其程式。\r\n"
+                             L"請在「設定」中設定密碼以限制存取。"
 };
 
 static const WCHAR *const *const kTables[LTM_LANG_COUNT] = { kEN, kCN, kTW };

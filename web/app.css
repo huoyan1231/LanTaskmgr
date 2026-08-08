@@ -457,6 +457,57 @@ main {
   font-size: 12.5px;
 }
 
+/* Per-instance PID list inside the sheet. */
+.pins {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 38vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pin {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.pin-label {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.pin-pid {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pin-kill {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.pin-kill:disabled { opacity: .5; }
+
 .sheet-actions {
   display: flex;
   gap: 9px;

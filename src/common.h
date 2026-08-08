@@ -91,6 +91,11 @@ BOOL ltm_const_time_equal(const char *a, const char *b);
 BOOL ltm_random_bytes(void *out, size_t len);
 void ltm_bytes_to_hex(const void *bytes, size_t len, char *out /* 2*len+1 */);
 
+/* Base64 (RFC 4648). encode out_cap must be >= ((len+2)/3)*4 + 1.
+ * decode returns byte count or -1 on error / insufficient out_cap. */
+BOOL ltm_base64_encode(const void *data, size_t len, char *out, size_t out_cap);
+int  ltm_base64_decode(const char *s, void *out, size_t out_cap);
+
 /* Directory the executable lives in, without a trailing backslash. */
 const WCHAR *ltm_exe_dir(void);
 /* Builds "<writable dir>\<name>". Prefers the exe directory and falls back to
