@@ -25,21 +25,29 @@ static const WCHAR *const kLangCodes[LTM_LANG_COUNT] = { L"EN", L"CN", L"TW" };
 
 static const char kPwSalt[] = "LanTaskmgr-pw-salt-v1";
 
-/* Derives the 32-byte AES-256 key from the fixed salt via SHA-256. */
-static void pw_derive_key(BYTE key[32])
+/* Derives the 32-byte AES-256 key from the fixed salt via SHA-256.
+ * Returns FALSE on failure: callers must not fall back to whatever happened to
+ * be on the stack, or the key would differ between runs and nothing written by
+ * one process would ever decrypt in the next. */
+static BOOL pw_derive_key(BYTE key[32])
 {
-    BCRYPT_ALG_HANDLE alg = NULL;
+    BCRYPT_ALG_HANDLE  alg = NULL;
     BCRYPT_HASH_HANDLE h = NULL;
+    BOOL               ok = FALSE;
 
+    ZeroMemory(key, 32);
     if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, NULL, 0) != 0) {
-        return;
+        return FALSE;
     }
     if (BCryptCreateHash(alg, &h, NULL, 0, NULL, 0, 0) == 0) {
-        BCryptHashData(h, (PUCHAR)kPwSalt, (ULONG)(sizeof(kPwSalt) - 1), 0);
-        BCryptFinishHash(h, key, 32, 0);
+        if (BCryptHashData(h, (PUCHAR)kPwSalt, (ULONG)(sizeof(kPwSalt) - 1), 0) == 0 &&
+            BCryptFinishHash(h, key, 32, 0) == 0) {
+            ok = TRUE;
+        }
         BCryptDestroyHash(h);
     }
     BCryptCloseAlgorithmProvider(alg, 0);
+    return ok;
 }
 
 /* Encrypts `pw` (UTF-16) into a base64 string written to `out`.
@@ -73,7 +81,9 @@ static BOOL pw_encrypt_to_b64(const WCHAR *pw, char *out, size_t out_cap)
         plain_len += pad;
     }
 
-    pw_derive_key(aes_key);
+    if (!pw_derive_key(aes_key)) {
+        return FALSE;
+    }
     if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_AES_ALGORITHM, NULL, 0) != 0) {
         return FALSE;
     }
@@ -85,12 +95,14 @@ static BOOL pw_encrypt_to_b64(const WCHAR *pw, char *out, size_t out_cap)
     if (BCryptGenerateSymmetricKey(alg, &keyh, NULL, 0, aes_key, 32, 0) != 0) {
         goto done;
     }
+    /* Store the IV first: BCryptEncrypt rolls the IV buffer forward as it goes,
+     * so after the call `iv` no longer holds the value decryption needs. */
     ltm_random_bytes(iv, sizeof(iv));
+    memcpy(buf, iv, sizeof(iv));
 
     ct_len = plain_len; /* AES block cipher: ciphertext length == plaintext */
     if (BCryptEncrypt(keyh, plain, plain_len, NULL, iv, sizeof(iv),
                       buf + sizeof(iv), ct_len, &got, 0) == 0) {
-        memcpy(buf, iv, sizeof(iv));
         ok = ltm_base64_encode(buf, sizeof(iv) + got, out, out_cap);
     }
 
@@ -111,13 +123,21 @@ static int pw_decrypt_from_b64(const char *b64, WCHAR *out, size_t out_chars)
     BCRYPT_KEY_HANDLE keyh = NULL;
     BYTE              plain[256];
     BYTE              aes_key[32];
+    BYTE              iv[16];
     ULONG             got;
     int               result = -1;
 
-    if (n < 16 || (n - 16) % 16 != 0) {
+    if (n < 32 || (n - 16) % 16 != 0 || (size_t)(n - 16) > sizeof(plain)) {
+        return -1; /* need the IV plus at least one block, and it must fit */
+    }
+    /* BCryptDecrypt writes the IV buffer back (it rolls it forward to the last
+     * ciphertext block), so it must be a separate writable copy -- passing a
+     * pointer into the same array that holds the ciphertext corrupts the data
+     * being decrypted. */
+    memcpy(iv, buf, sizeof(iv));
+    if (!pw_derive_key(aes_key)) {
         return -1;
     }
-    pw_derive_key(aes_key);
     if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_AES_ALGORITHM, NULL, 0) != 0) {
         return -1;
     }
@@ -129,16 +149,24 @@ static int pw_decrypt_from_b64(const char *b64, WCHAR *out, size_t out_chars)
     if (BCryptGenerateSymmetricKey(alg, &keyh, NULL, 0, aes_key, 32, 0) != 0) {
         goto done;
     }
-    if (BCryptDecrypt(keyh, buf + 16, (ULONG)(n - 16), NULL, buf, 16,
+    if (BCryptDecrypt(keyh, buf + 16, (ULONG)(n - 16), NULL, iv, sizeof(iv),
                       plain, sizeof(plain), &got, 0) == 0) {
         ULONG pad = (got > 0) ? plain[got - 1] : 0;
         ULONG chars;
-        if (pad <= 16 && got >= pad) {
-            got -= pad;
+
+        /* Validate the PKCS7 padding instead of trusting it. A wrong key or a
+         * corrupted blob usually produces nonsense here, and treating that as
+         * a valid password is exactly how mojibake ends up in the dialog. */
+        if (pad == 0 || pad > 16 || pad > got) {
+            goto done;
+        }
+        got -= pad;
+        if (got % sizeof(WCHAR) != 0) {
+            goto done; /* not a whole number of UTF-16 code units */
         }
         chars = got / sizeof(WCHAR);
         if (chars >= out_chars) {
-            chars = (ULONG)out_chars - 1;
+            goto done;
         }
         memcpy(out, plain, chars * sizeof(WCHAR));
         out[chars] = L'\0';
