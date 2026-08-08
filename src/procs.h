@@ -19,15 +19,27 @@ typedef enum ltm_pclass {
     LTM_PCLASS_SYSTEM = 2  /* session 0 / OS infrastructure          */
 } ltm_pclass;
 
+/* One running process inside a group.
+ *
+ * `title` is a pointer into the snapshot's own storage (or NULL), not an
+ * inline array: almost no process has a caption, and giving every instance a
+ * 128-WCHAR buffer is what used to make a snapshot cost tens of megabytes. */
+typedef struct ltm_proc_inst {
+    DWORD        pid;
+    const WCHAR *title;   /* NULL when the process has no visible window */
+} ltm_proc_inst;
+
 typedef struct ltm_proc_group {
     WCHAR      name[LTM_PROC_NAME_MAX];
     WCHAR      title[LTM_PROC_TITLE_MAX]; /* representative window caption */
     DWORD      instances;
     DWORD      pid;         /* first pid seen, for display only */
-    DWORD      pids[LTM_PROC_PID_BATCH];           /* every pid in this group */
-    WCHAR      ptitles[LTM_PROC_PID_BATCH][LTM_PROC_TITLE_MAX]; /* per-instance caption */
-    BOOL       piswin[LTM_PROC_PID_BATCH];         /* per-instance has a window */
-    int        pid_count;
+    /* Slice of ltm_proc_snapshot::insts belonging to this group. Groups do not
+     * own per-instance storage; the snapshot holds one flat array for all of
+     * them, so the cost scales with the process count instead of with
+     * (process count x worst-case instances per group). */
+    int        inst_first;
+    int        inst_count;
     ULONG64    mem_bytes;   /* summed private working set */
     float      cpu_pct;     /* share of total CPU since the previous snapshot */
     ltm_pclass klass;
@@ -37,6 +49,14 @@ typedef struct ltm_proc_group {
 typedef struct ltm_proc_snapshot {
     ltm_proc_group *items;
     int             count;
+
+    /* Flat per-instance array, indexed via ltm_proc_group::inst_first. */
+    ltm_proc_inst  *insts;
+    int             inst_count;
+
+    /* Backing store the ltm_proc_inst::title pointers refer to. */
+    WCHAR          *titles;
+    size_t          titles_len;
 } ltm_proc_snapshot;
 
 typedef enum ltm_kill_result {

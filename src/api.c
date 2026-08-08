@@ -387,8 +387,10 @@ static void handle_list(ltm_http_response *res)
         return;
     }
 
-    /* Pre-size the body buffer so the item loop does not reallocate. */
-    ltm_buf_reserve(&res->body, (size_t)snap.count * 64 + 256);
+    /* Pre-size the body buffer so the item loop does not reallocate. Each
+     * instance adds a {"p":NNNN} object on top of the per-group fields. */
+    ltm_buf_reserve(&res->body,
+                    (size_t)snap.count * 96 + (size_t)snap.inst_count * 16 + 256);
 
     for (i = 0; i < snap.count; ++i) {
         const ltm_proc_group *g = &snap.items[i];
@@ -413,18 +415,16 @@ static void handle_list(ltm_http_response *res)
         {
             int j;
             ltm_buf_puts(&res->body, ",\"pins\":[");
-            for (j = 0; j < g->pid_count; ++j) {
+            for (j = 0; j < g->inst_count; ++j) {
+                const ltm_proc_inst *inst = &snap.insts[g->inst_first + j];
                 if (j > 0) {
                     ltm_buf_putc(&res->body, ',');
                 }
-                ltm_buf_printf(&res->body, "{\"p\":%lu", (unsigned long)g->pids[j]);
-                if (g->ptitles[j][0] != L'\0') {
+                ltm_buf_printf(&res->body, "{\"p\":%lu", (unsigned long)inst->pid);
+                if (inst->title != NULL) {
                     ltm_buf_puts(&res->body, ",\"t\":\"");
-                    ltm_buf_put_json_escaped_w(&res->body, g->ptitles[j]);
-                    ltm_buf_puts(&res->body, "\"");
-                }
-                if (g->piswin[j]) {
-                    ltm_buf_puts(&res->body, ",\"w\":1");
+                    ltm_buf_put_json_escaped_w(&res->body, inst->title);
+                    ltm_buf_puts(&res->body, "\",\"w\":1");
                 }
                 ltm_buf_putc(&res->body, '}');
             }

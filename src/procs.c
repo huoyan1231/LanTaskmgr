@@ -458,14 +458,16 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
     int             raw_count = 0;
     enum_ctx        wins;
     ltm_proc_group *groups = NULL;
+    ltm_proc_inst  *insts = NULL;
+    WCHAR          *titles = NULL;
+    size_t          titles_len = 0, titles_cap = 0;
     int             gcount = 0;
     FILETIME        ft;
     ULARGE_INTEGER  now;
     ULONG64         wall_delta;
     int             i;
 
-    out->items = NULL;
-    out->count = 0;
+    ZeroMemory(out, sizeof(*out));
     if (!g_ready) {
         return FALSE;
     }
@@ -493,7 +495,24 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
     qsort(raw, (size_t)raw_count, sizeof(raw_proc), cmp_raw_name);
 
     groups = (ltm_proc_group *)ltm_alloc((size_t)(raw_count + 1) * sizeof(ltm_proc_group));
-    if (groups == NULL) {
+    insts  = (ltm_proc_inst  *)ltm_alloc((size_t)(raw_count + 1) * sizeof(ltm_proc_inst));
+    if (groups == NULL || insts == NULL) {
+        ltm_free(groups);
+        ltm_free(insts);
+        ltm_free(raw);
+        LeaveCriticalSection(&g_lock);
+        ltm_free(wins.items);
+        return FALSE;
+    }
+
+    /* Titles land in one growable pool. Only processes that actually own a
+     * visible window consume any of it, which on a normal desktop is a couple
+     * of dozen out of several hundred. */
+    titles_cap = 1024;
+    titles = (WCHAR *)ltm_alloc(titles_cap * sizeof(WCHAR));
+    if (titles == NULL) {
+        ltm_free(groups);
+        ltm_free(insts);
         ltm_free(raw);
         LeaveCriticalSection(&g_lock);
         ltm_free(wins.items);
@@ -516,27 +535,46 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
             g->pid = rp->pid;
             g->is_protected = ltm_proc_is_protected_name(rp->name);
             g->klass = g->is_protected ? LTM_PCLASS_SYSTEM : LTM_PCLASS_NORMAL;
+            /* raw[] is sorted by name, so every instance of this group arrives
+             * consecutively and the slice stays contiguous. */
+            g->inst_first = out->inst_count;
         }
 
         g->instances++;
         g->mem_bytes += rp->mem;
 
-        if (g->pid_count < LTM_PROC_PID_BATCH) {
-            int idx = g->pid_count++;
-            g->pids[idx] = rp->pid;
-            if (!g->is_protected) {
-                title = find_title(&wins, rp->pid);
-                if (title != NULL) {
-                    ltm_strlcpy_w(g->ptitles[idx], LTM_PROC_TITLE_MAX, title);
-                    g->piswin[idx] = TRUE;
-                } else {
-                    g->ptitles[idx][0] = L'\0';
-                    g->piswin[idx] = FALSE;
+        /* One lookup per process, reused for both the per-instance caption and
+         * the group classification below. */
+        title = g->is_protected ? NULL : find_title(&wins, rp->pid);
+
+        if (g->inst_count < LTM_PROC_PID_BATCH) {
+            ltm_proc_inst *inst = &insts[out->inst_count++];
+            inst->pid = rp->pid;
+            inst->title = NULL;
+            if (title != NULL) {
+                size_t need = wcslen(title) + 1;
+                if (titles_len + need > titles_cap) {
+                    size_t ncap = titles_cap;
+                    WCHAR *nt;
+                    while (ncap < titles_len + need) {
+                        ncap *= 2;
+                    }
+                    nt = (WCHAR *)ltm_realloc(titles, ncap * sizeof(WCHAR));
+                    if (nt != NULL) {
+                        titles = nt;
+                        titles_cap = ncap;
+                    }
                 }
-            } else {
-                g->ptitles[idx][0] = L'\0';
-                g->piswin[idx] = FALSE;
+                if (titles_len + need <= titles_cap) {
+                    memcpy(titles + titles_len, title, need * sizeof(WCHAR));
+                    /* Store the offset for now: the pool may still be
+                     * reallocated, which would dangle any pointer taken here.
+                     * Offsets are converted to pointers once it settles. */
+                    inst->title = (const WCHAR *)(UINT_PTR)(titles_len + 1);
+                    titles_len += need;
+                }
             }
+            g->inst_count++;
         }
 
         prev = prev_cpu_for(rp->pid, &had_prev);
@@ -550,7 +588,6 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
         }
 
         if (!g->is_protected) {
-            title = find_title(&wins, rp->pid);
             if (title != NULL) {
                 g->klass = LTM_PCLASS_WINDOW;
                 if (g->title[0] == L'\0') {
@@ -562,16 +599,28 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
         }
     }
 
+    /* The title pool is final now: turn the stored 1-based offsets into real
+     * pointers. */
+    for (i = 0; i < out->inst_count; ++i) {
+        size_t off = (size_t)(UINT_PTR)insts[i].title;
+        insts[i].title = (off != 0) ? (titles + (off - 1)) : NULL;
+    }
+
     remember_cpu(raw, raw_count, now.QuadPart);
     LeaveCriticalSection(&g_lock);
 
     ltm_free(raw);
     ltm_free(wins.items);
 
+    /* Sorting groups is safe: the slices are index based, so moving a group
+     * struct carries its (inst_first, inst_count) pair along with it. */
     qsort(groups, (size_t)gcount, sizeof(ltm_proc_group), cmp_group_name);
 
     out->items = groups;
     out->count = gcount;
+    out->insts = insts;
+    out->titles = titles;
+    out->titles_len = titles_len;
     return TRUE;
 }
 
@@ -581,8 +630,9 @@ void ltm_proc_snapshot_free(ltm_proc_snapshot *s)
         return;
     }
     ltm_free(s->items);
-    s->items = NULL;
-    s->count = 0;
+    ltm_free(s->insts);
+    ltm_free(s->titles);
+    ZeroMemory(s, sizeof(*s));
 }
 
 /* ------------------------------------------------------------------ */
