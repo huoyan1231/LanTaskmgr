@@ -79,8 +79,10 @@ poll. The list refreshes every two seconds and can be sorted by memory, CPU or
 name, or filtered by typing.
 
 A short list of processes that instantly bugcheck or reboot Windows when
-terminated (`csrss`, `wininit`, `smss`, `services`, `lsass`, `winlogon`, …) is
-refused by the server rather than merely warned about.
+terminated (e.g. `system`, `csrss`, `wininit`, `smss`, `services`, `lsass`,
+`winlogon`, `registry`, `memory compression`, …) is refused by the server. They
+show up red in `/list`; only an **individual** protected PID is refused — the
+other processes in the same request are still handled.
 
 ## Configuration
 
@@ -119,9 +121,12 @@ accordingly:
 
 * Traffic is **not** encrypted. Anyone sharing the network can see the session
   cookie, so do not run it on café or hotel Wi-Fi.
-* The password is stored in clear text in `settings.ini`, and is checked in
-  constant time against a random session token issued on login.
-* Five failed logins block that IP until the service is restarted.
+* The password is stored in clear text in `settings.ini` and compared in
+  constant time; on success a random `HttpOnly` session token is issued, bound
+  to the login IP and browser fingerprint (a different IP invalidates it).
+* There is **no** failed-login ban / IP rate-limiting here: a failure just
+  returns `401` and is logged — it does not block that IP (do not rely on this
+  for network security).
 * Never forward the port through your router.
 
 ## Differences from the original
