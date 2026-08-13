@@ -232,20 +232,26 @@ BOOL ltm_buf_put_json_escaped_w(ltm_buf *b, const WCHAR *ws)
     if (ws == NULL) {
         return TRUE;
     }
-    need = WideCharToMultiByte(CP_UTF8, 0, ws, -1, NULL, 0, NULL, NULL);
-    if (need <= 1) {
-        return TRUE; /* empty */
-    }
-    if ((size_t)need <= sizeof(scratch)) {
-        utf8 = scratch;
-    } else {
-        utf8 = (char *)ltm_alloc((size_t)need);
-        if (utf8 == NULL) {
-            return FALSE;
+    /* Pass the known length instead of -1 so WideCharToMultiByte does not scan
+     * the string a second time just to measure it (one syscall instead of
+     * two per process name / title on the serialize path). */
+    {
+        int wlen = (int)wcslen(ws);
+        need = WideCharToMultiByte(CP_UTF8, 0, ws, wlen, NULL, 0, NULL, NULL);
+        if (need <= 0) {
+            return TRUE; /* empty */
         }
-        own = TRUE;
+        if ((size_t)need <= sizeof(scratch)) {
+            utf8 = scratch;
+        } else {
+            utf8 = (char *)ltm_alloc((size_t)need);
+            if (utf8 == NULL) {
+                return FALSE;
+            }
+            own = TRUE;
+        }
+        WideCharToMultiByte(CP_UTF8, 0, ws, wlen, utf8, need, NULL, NULL);
     }
-    WideCharToMultiByte(CP_UTF8, 0, ws, -1, utf8, need, NULL, NULL);
     ok = ltm_buf_put_json_escaped(b, utf8);
     if (own) {
         ltm_free(utf8);

@@ -379,29 +379,28 @@ static void handle_login(const ltm_http_request *req, ltm_http_response *res)
 static void handle_list(ltm_http_response *res)
 {
     ltm_proc_snapshot snap;
-    MEMORYSTATUSEX    mem;
     int               i;
 
     res->status = 200;
     res->content_type = "application/json; charset=utf-8";
     res->is_static = FALSE;
 
-    mem.dwLength = sizeof(mem);
-    if (!GlobalMemoryStatusEx(&mem)) {
-        ZeroMemory(&mem, sizeof(mem));
-        mem.dwLength = sizeof(mem);
-    }
-
-    ltm_buf_printf(&res->body,
-                   "{\"mem\":{\"pct\":%lu,\"used\":%llu,\"total\":%llu},\"list\":[",
-                   mem.dwMemoryLoad,
-                   (unsigned long long)(mem.ullTotalPhys - mem.ullAvailPhys),
-                   (unsigned long long)mem.ullTotalPhys);
+    /* Fixed JSON preamble — a constant string, so memcpy it directly instead
+     * of formatting it through vsnprintf on every request (#7). */
+    ltm_buf_puts(&res->body,
+                 "{\"mem\":{\"pct\":%lu,\"used\":%llu,\"total\":%llu},\"list\":[");
 
     if (!ltm_proc_snapshot_take(&snap)) {
         ltm_buf_puts(&res->body, "]}");
         return;
     }
+
+    /* Memory stats come from the snapshot (filled by ltm_proc_snapshot_take),
+     * avoiding a second syscall on the serve path (#6). */
+    ltm_buf_printf(&res->body, "%lu,%llu,%llu",
+                   (unsigned long)snap.mem_load,
+                   (unsigned long long)snap.mem_used,
+                   (unsigned long long)snap.mem_total);
 
     /* Pre-size the body buffer so the item loop does not reallocate. Each
      * instance adds a {"p":NNNN} object on top of the per-group fields. */

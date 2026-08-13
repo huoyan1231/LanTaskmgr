@@ -57,6 +57,12 @@ typedef struct ltm_proc_snapshot {
     /* Backing store the ltm_proc_inst::title pointers refer to. */
     WCHAR          *titles;
     size_t          titles_len;
+
+    /* System memory snapshot, filled by ltm_proc_snapshot_take so callers
+     * avoid a second syscall on the serve path. */
+    DWORD           mem_load;   /* GlobalMemoryStatusEx.dwMemoryLoad */
+    ULONG64         mem_used;   /* total - avail, bytes */
+    ULONG64         mem_total;  /* total physical, bytes */
 } ltm_proc_snapshot;
 
 typedef enum ltm_kill_result {

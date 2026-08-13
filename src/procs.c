@@ -94,11 +94,28 @@ static BOOL             g_ready;
 /* Reused across snapshots so the steady state performs no allocation at all. */
 static void    *g_sysbuf;
 static SIZE_T   g_sysbuf_cap;
-static cpu_prev *g_prev;
-static int      g_prev_count;
-static int      g_prev_cap;
+
+/* CPU history as an open-addressing hash table keyed by pid. O(1) lookup
+ * (prev_cpu_for) means remember_cpu never has to re-sort the whole set, which
+ * used to be an O(n log n) qsort every snapshot. */
+#define CPU_TABLE_BITS 11                      /* 2048 slots */
+#define CPU_TABLE_SIZE (1u << CPU_TABLE_BITS)
+#define CPU_TABLE_MASK (CPU_TABLE_SIZE - 1u)
+
+static cpu_prev g_cpu[CPU_TABLE_SIZE];         /* pid == 0 marks an empty slot */
+static int      g_cpu_hist_count;              /* number of live entries */
 static ULONG64  g_prev_time100ns;
-static DWORD    g_cpu_count = 1;
+static DWORD    g_cpu_cores = 1;               /* logical processor count */
+
+/* Reused across snapshots: the grouping / instance / title buffers used to be
+ * heap-allocated and zero-initialised on every /list (3 allocs + 3 frees every
+ * two seconds). They now grow only when the machine's process count grows. */
+static ltm_proc_group *g_groups;
+static int             g_groups_cap;
+static ltm_proc_inst  *g_insts;
+static int             g_insts_cap;
+static WCHAR          *g_titles;
+static size_t          g_titles_cap;
 
 /* ~132 KB window-title hash table, kept module-level so the steady state
  * performs no allocation and the snapshot stack stays small. */
@@ -139,7 +156,7 @@ void ltm_proc_init(void)
     InitializeCriticalSection(&g_lock);
 
     GetSystemInfo(&si);
-    g_cpu_count = (si.dwNumberOfProcessors > 0) ? si.dwNumberOfProcessors : 1;
+    g_cpu_cores = (si.dwNumberOfProcessors > 0) ? si.dwNumberOfProcessors : 1;
 
     ntdll = GetModuleHandleW(L"ntdll.dll");
     if (ntdll != NULL) {
@@ -158,11 +175,19 @@ void ltm_proc_shutdown(void)
     ltm_free(g_sysbuf);
     g_sysbuf = NULL;
     g_sysbuf_cap = 0;
-    ltm_free(g_prev);
-    g_prev = NULL;
-    g_prev_count = g_prev_cap = 0;
     ltm_free(g_wins);
     g_wins = NULL;
+    ltm_free(g_groups);
+    g_groups = NULL;
+    g_groups_cap = 0;
+    ltm_free(g_insts);
+    g_insts = NULL;
+    g_insts_cap = 0;
+    ltm_free(g_titles);
+    g_titles = NULL;
+    g_titles_cap = 0;
+    g_cpu_hist_count = 0;
+    g_prev_time100ns = 0;
     DeleteCriticalSection(&g_lock);
 }
 
@@ -410,28 +435,23 @@ static int sample_toolhelp(raw_proc **out, int *out_count)
 /* CPU deltas                                                          */
 /* ------------------------------------------------------------------ */
 
-static int cmp_prev(const void *a, const void *b)
+/* Knuth multiplicative hash: pids cluster on low bits, so the raw value
+ * makes a poor index. Open addressing with pid == 0 marking an empty slot. */
+static unsigned cpu_slot(DWORD pid)
 {
-    DWORD pa = ((const cpu_prev *)a)->pid;
-    DWORD pb = ((const cpu_prev *)b)->pid;
-    return (pa < pb) ? -1 : (pa > pb) ? 1 : 0;
+    return (unsigned)((pid * 2654435761u) >> (32 - CPU_TABLE_BITS)) & CPU_TABLE_MASK;
 }
 
 static ULONG64 prev_cpu_for(DWORD pid, BOOL *found)
 {
-    int lo = 0, hi = g_prev_count - 1;
+    unsigned slot = cpu_slot(pid);
     *found = FALSE;
-    while (lo <= hi) {
-        int mid = lo + (hi - lo) / 2;
-        if (g_prev[mid].pid == pid) {
+    while (g_cpu[slot].pid != 0) {
+        if (g_cpu[slot].pid == pid) {
             *found = TRUE;
-            return g_prev[mid].cpu100ns;
+            return g_cpu[slot].cpu100ns;
         }
-        if (g_prev[mid].pid < pid) {
-            lo = mid + 1;
-        } else {
-            hi = mid - 1;
-        }
+        slot = (slot + 1u) & CPU_TABLE_MASK;
     }
     return 0;
 }
@@ -439,21 +459,24 @@ static ULONG64 prev_cpu_for(DWORD pid, BOOL *found)
 static void remember_cpu(const raw_proc *raw, int count, ULONG64 now100ns)
 {
     int i;
-    if (count > g_prev_cap) {
-        int       ncap = count + 64;
-        cpu_prev *np = (cpu_prev *)ltm_realloc(g_prev, (size_t)ncap * sizeof(cpu_prev));
-        if (np == NULL) {
-            return;
-        }
-        g_prev = np;
-        g_prev_cap = ncap;
+
+    /* The set of pids changes every snapshot (processes come and go), so a
+     * full rebuild is simpler and cheaper than incremental merge — and it
+     * needs no sorting because lookups are O(1) via the hash. Clear only the
+     * slots we are about to overwrite's neighbours could dangle, so wipe the
+     * whole table once (2048 slots, a few KB). */
+    for (i = 0; i < (int)CPU_TABLE_SIZE; ++i) {
+        g_cpu[i].pid = 0;
     }
     for (i = 0; i < count; ++i) {
-        g_prev[i].pid = raw[i].pid;
-        g_prev[i].cpu100ns = raw[i].cpu100ns;
+        unsigned slot = cpu_slot(raw[i].pid);
+        while (g_cpu[slot].pid != 0) {
+            slot = (slot + 1u) & CPU_TABLE_MASK;
+        }
+        g_cpu[slot].pid = raw[i].pid;
+        g_cpu[slot].cpu100ns = raw[i].cpu100ns;
     }
-    g_prev_count = count;
-    qsort(g_prev, (size_t)g_prev_count, sizeof(cpu_prev), cmp_prev);
+    g_cpu_hist_count = count;
     g_prev_time100ns = now100ns;
 }
 
@@ -482,14 +505,15 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
     raw_proc       *raw = NULL;
     int             raw_count = 0;
     enum_ctx       *wins;
-    ltm_proc_group *groups = NULL;
-    ltm_proc_inst  *insts = NULL;
-    WCHAR          *titles = NULL;
-    size_t          titles_len = 0, titles_cap = 0;
+    ltm_proc_group *groups = g_groups;
+    ltm_proc_inst  *insts = g_insts;
+    WCHAR          *titles = g_titles;
+    size_t          titles_len = 0, titles_cap = g_titles_cap;
     int             gcount = 0;
     FILETIME        ft;
     ULARGE_INTEGER  now;
     ULONG64         wall_delta;
+    MEMORYSTATUSEX  mem;
     int             i;
 
     ZeroMemory(out, sizeof(*out));
@@ -498,7 +522,9 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
     }
 
     /* The window table is ~132 KB: too big for the stack, and reusing one
-     * module-level buffer keeps the steady state allocation-free. */
+     * module-level buffer keeps the steady state allocation-free. It is wiped
+     * and re-enumerated every snapshot so the phone always sees current
+     * captions; the cost is one EnumWindows call, not per-process allocation. */
     if (g_wins == NULL) {
         g_wins = (enum_ctx *)ltm_alloc(sizeof(enum_ctx));
         if (g_wins == NULL) {
@@ -518,6 +544,15 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
         }
     }
 
+    /* Memory stats live next to the process sample so the serve path does not
+     * need a second syscall per /list request (#6). */
+    mem.dwLength = sizeof(mem);
+    if (GlobalMemoryStatusEx(&mem)) {
+        out->mem_load  = mem.dwMemoryLoad;
+        out->mem_used  = (ULONG64)(mem.ullTotalPhys - mem.ullAvailPhys);
+        out->mem_total = mem.ullTotalPhys;
+    }
+
     GetSystemTimeAsFileTime(&ft);
     now.LowPart = ft.dwLowDateTime;
     now.HighPart = ft.dwHighDateTime;
@@ -527,27 +562,42 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
 
     qsort(raw, (size_t)raw_count, sizeof(raw_proc), cmp_raw_name);
 
-    groups = (ltm_proc_group *)ltm_alloc((size_t)(raw_count + 1) * sizeof(ltm_proc_group));
-    insts  = (ltm_proc_inst  *)ltm_alloc((size_t)(raw_count + 1) * sizeof(ltm_proc_inst));
-    if (groups == NULL || insts == NULL) {
-        ltm_free(groups);
-        ltm_free(insts);
-        ltm_free(raw);
-        LeaveCriticalSection(&g_lock);
-        return FALSE;
+    /* The grouping / instance / title buffers are reused module-level scratch
+     * (see g_groups / g_insts / g_titles). They grow only when the machine's
+     * process count grows, so the steady state performs no heap traffic here. */
+    if (raw_count + 1 > g_groups_cap) {
+        int       ncap = raw_count + 1;
+        ltm_proc_group *ng = (ltm_proc_group *)ltm_realloc(groups,
+                                              (size_t)ncap * sizeof(ltm_proc_group));
+        ltm_proc_inst  *ni = (ltm_proc_inst  *)ltm_realloc(insts,
+                                              (size_t)ncap * sizeof(ltm_proc_inst));
+        if (ng == NULL || ni == NULL) {
+            ltm_free(ng);
+            ltm_free(ni);
+            ltm_free(raw);
+            LeaveCriticalSection(&g_lock);
+            return FALSE;
+        }
+        g_groups = groups = ng;
+        g_insts  = insts  = ni;
+        g_groups_cap = ncap;
     }
+    /* Only the used prefix needs clearing; gcount/instances are recomputed. */
+    ZeroMemory(groups, (size_t)(raw_count + 1) * sizeof(ltm_proc_group));
+    ZeroMemory(insts,  (size_t)(raw_count + 1) * sizeof(ltm_proc_inst));
 
-    /* Titles land in one growable pool. Only processes that actually own a
-     * visible window consume any of it, which on a normal desktop is a couple
-     * of dozen out of several hundred. */
-    titles_cap = 1024;
-    titles = (WCHAR *)ltm_alloc(titles_cap * sizeof(WCHAR));
-    if (titles == NULL) {
-        ltm_free(groups);
-        ltm_free(insts);
-        ltm_free(raw);
-        LeaveCriticalSection(&g_lock);
-        return FALSE;
+    /* Titles land in one growable pool, reused across snapshots. Only
+     * processes that actually own a visible window consume any of it. */
+    if (titles_cap == 0) {
+        titles_cap = 1024;
+        titles = (WCHAR *)ltm_alloc(titles_cap * sizeof(WCHAR));
+        if (titles == NULL) {
+            ltm_free(raw);
+            LeaveCriticalSection(&g_lock);
+            return FALSE;
+        }
+        g_titles = titles;
+        g_titles_cap = titles_cap;
     }
 
     for (i = 0; i < raw_count; ++i) {
@@ -561,7 +611,6 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
             g = &groups[gcount - 1];
         } else {
             g = &groups[gcount++];
-            ZeroMemory(g, sizeof(*g));
             ltm_strlcpy_w(g->name, LTM_PROC_NAME_MAX, rp->name);
             g->pid = rp->pid;
             g->is_protected = ltm_proc_is_protected_name(rp->name);
@@ -594,6 +643,8 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
                     if (nt != NULL) {
                         titles = nt;
                         titles_cap = ncap;
+                        g_titles = titles;
+                        g_titles_cap = titles_cap;
                     }
                 }
                 if (titles_len + need <= titles_cap) {
@@ -611,7 +662,7 @@ BOOL ltm_proc_snapshot_take(ltm_proc_snapshot *out)
         prev = prev_cpu_for(rp->pid, &had_prev);
         if (had_prev && wall_delta > 0 && rp->cpu100ns > prev) {
             double pct = (double)(rp->cpu100ns - prev) * 100.0 /
-                         ((double)wall_delta * (double)g_cpu_count);
+                         ((double)wall_delta * (double)g_cpu_cores);
             if (pct > 100.0) {
                 pct = 100.0;
             }
@@ -659,9 +710,9 @@ void ltm_proc_snapshot_free(ltm_proc_snapshot *s)
     if (s == NULL) {
         return;
     }
-    ltm_free(s->items);
-    ltm_free(s->insts);
-    ltm_free(s->titles);
+    /* items / insts / titles point into the module-level reused scratch
+     * buffers (g_groups / g_insts / g_titles); they are freed once at
+     * shutdown, not per snapshot, to keep the steady state allocation-free. */
     ZeroMemory(s, sizeof(*s));
 }
 
