@@ -146,13 +146,27 @@ stays off public networks. Parsed with `InetPtonW`; an invalid value fails
 | POST | `/dologin` | — | Verify password, issue `HttpOnly` session cookie |
 | POST | `/logout` | yes | Drop session + clear cookie |
 | GET | `/list` | yes | JSON array of process groups (+ system memory) |
-| POST | `/kill` | yes | Kill every instance of a named process |
+| POST | `/kill` | yes | Kill a list of PIDs (comma/space separated); protected PIDs refused with `403 protected` |
 
-Auth model: cookie `ltm=<token>`; constant-time password compare; **5 failed
-logins from an IP → 403 until `ltm_api_reset()`** (service restart or the
-"unblock" tray action). A short hardcoded list of system processes
-(`csrss`, `wininit`, `smss`, `services`, `lsass`, `winlogon`, …) is **refused**
-by the server, not merely warned about.
+Auth model: cookie `ltm=<token>` (HttpOnly, SameSite=Strict, Max-Age=43200);
+constant-time password compare; sessions are bounded by `LTM_MAX_SESSIONS = 8`
+(`src/api.c`) — once all slots are taken the oldest expired/active slot is
+recycled. **There is NO IP-ban / rate-limit / failed-login-counter logic.**
+A failed login returns `401 "bad"` and is only logged
+(`ltm_log(L"failed login from %S", …)`); it never blocks the IP or increments
+any counter. A failed login does **not** trigger `ltm_api_reset()`.
+
+Session integrity is bound to the originating IP + User-Agent fingerprint
+(`session_validate` compares `s->ip`/`s->ua_hash`), so a token used from a
+different IP or browser is rejected — this is anti-hijack, not a ban.
+
+There is **no** server-side hardcoded "refuse these system processes" list at
+the API layer. Killing is per-PID: `handle_kill` parses a PID list and calls
+`ltm_proc_kill_by_pid`; only an individual protected PID returns
+`LTM_KILL_PROTECTED` (server replies `403 "protected"`). The protected flag is
+computed in `src/procs.c` and surfaced to the UI as `"k":1` in `/list` so the
+client greys it out — the server refuses to kill it, but there is no static
+name list in `api.c`.
 
 **Default password is empty** — on first run (or with `Password=` blank) the
 server runs with no login prompt. This is intentional; do not "fix" it back to
